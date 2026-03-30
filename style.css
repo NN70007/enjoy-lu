@@ -1035,3 +1035,64 @@ a, button, [role="button"], [role="link"], input, textarea, select {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-faint);
 }
+
+/* Made in Luxembourg footer badge */
+.made-in-lux {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+.lux-flag {
+  display: inline-flex;
+  width: 24px;
+  height: 16px;
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.lux-flag span {
+  flex: 1;
+}
+.lux-r { background: #ED2939; }
+.lux-w { background: #FFFFFF; }
+.lux-b { background: #00A1DE; }
+
+/* Past events collapsible */
+.past-events-toggle {
+  width: 100%;
+  margin-top: 2rem;
+  text-align: center;
+}
+.past-toggle-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 10px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+}
+.past-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.past-events-grid {
+  display: none;
+  margin-top: 1.5rem;
+}
+.past-events-grid.show {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+.past-events-grid .card {
+  opacity: 0.7;
+}
+.past-events-grid .card:hover {
+  opacity: 1;
+}
