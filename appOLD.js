@@ -1,7 +1,6 @@
 /**
- * enjoy.lu — App JavaScript (FIXED)
+ * enjoy.lu — App JavaScript
  * Language toggle, dark mode, smooth scroll, mobile menu, scroll animations
- * Safari-compatible event handlers
  */
 
 (function () {
@@ -155,46 +154,6 @@
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
-  });
-
-  // ── PAST EVENTS TOGGLE (SAFARI-COMPATIBLE FIX) ──
-  // FIX: Safari has issues with classList.toggle() and textContent in onclick
-  // We use addEventListener with explicit state management instead
-  
-  var pastToggles = document.querySelectorAll('.past-toggle-btn');
-  
-  pastToggles.forEach(function(btn) {
-    // Store state on the button element
-    btn.dataset.expanded = 'false';
-    
-    btn.addEventListener('click', function() {
-      var targetGrid = this.parentElement.nextElementSibling;
-      
-      if (!targetGrid || !targetGrid.classList.contains('past-events-grid')) {
-        console.warn('Past events grid not found for toggle button');
-        return;
-      }
-      
-      // Toggle state
-      var isExpanded = btn.dataset.expanded === 'true';
-      btn.dataset.expanded = isExpanded ? 'false' : 'true';
-      
-      // Update grid visibility
-      if (isExpanded) {
-        targetGrid.classList.remove('show');
-        btn.textContent = '▸ Événements passés / Past events';
-      } else {
-        targetGrid.classList.add('show');
-        btn.textContent = '▾ Événements passés / Past events';
-      }
-      
-      // Update ARIA for accessibility
-      btn.setAttribute('aria-expanded', !isExpanded);
-    });
-    
-    // Set initial ARIA state
-    btn.setAttribute('aria-expanded', 'false');
-    btn.setAttribute('aria-label', 'Show past events');
   });
 
 })();
