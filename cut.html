@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔪 Découpeur de Sections - enjoy.lu</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  padding: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  background: white;
+  border-radius: 20px;
+  padding: 3rem;
+  max-width: 700px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: #1a1a1a;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.step {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border-left: 4px solid #667eea;
+}
+
+.step-number {
+  display: inline-block;
+  background: #667eea;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 32px;
+  font-weight: bold;
+  margin-right: 0.75rem;
+}
+
+.step h3 {
+  display: inline;
+  font-size: 1.1rem;
+  color: #1a1a1a;
+}
+
+.file-input-wrapper {
+  margin-top: 1rem;
+  position: relative;
+}
+
+input[type="file"] {
+  width: 100%;
+  padding: 1rem;
+  border: 2px dashed #667eea;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+input[type="file"]:hover {
+  background: #f8f9fa;
+}
+
+button {
+  width: 100%;
+  padding: 1.2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-top: 1.5rem;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+}
+
+button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+#status {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border-radius: 8px;
+  display: none;
+}
+
+#status.success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+  display: block;
+}
+
+#status.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+  display: block;
+}
+
+#status.info {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+  display: block;
+}
+
+.file-list {
+  margin-top: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.file-item:hover {
+  background: #f8f9fa;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.file-size {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.download-btn {
+  padding: 0.5rem 1rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  width: auto;
+  margin: 0;
+}
+
+.download-btn:hover {
+  background: #5568d3;
+}
+
+.download-all {
+  margin-top: 1rem;
+}
+
+.warning {
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>🔪 Découpeur de Sections</h1>
+  <p class="subtitle">Transforme ton index.html en sections modulaires</p>
+
+  <div class="warning">
+    ⚠️ <strong>Important :</strong> Assure-toi que ton fichier s'appelle bien <code>index.html</code> ou <code>index-original.html</code>
+  </div>
+
+  <div class="step">
+    <h3><span class="step-number">1</span> Sélectionne ton index.html</h3>
+    <div class="file-input-wrapper">
+      <input type="file" id="fileInput" accept=".html" />
+    </div>
+  </div>
+
+  <div class="step">
+    <h3><span class="step-number">2</span> Découpe en sections</h3>
+    <button id="processBtn" disabled>Découper les sections</button>
+  </div>
+
+  <div id="status"></div>
+
+  <div id="results" style="display: none;">
+    <div class="step">
+      <h3><span class="step-number">3</span> Télécharge les sections</h3>
+      <div class="file-list" id="fileList"></div>
+      <button class="download-all" id="downloadAll">📦 Tout télécharger (ZIP)</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const fileInput = document.getElementById('fileInput');
+const processBtn = document.getElementById('processBtn');
+const status = document.getElementById('status');
+const results = document.getElementById('results');
+const fileList = document.getElementById('fileList');
+const downloadAll = document.getElementById('downloadAll');
+
+let generatedFiles = {};
+
+fileInput.addEventListener('change', function(e) {
+  if (e.target.files.length > 0) {
+    processBtn.disabled = false;
+    showStatus('Fichier chargé : ' + e.target.files[0].name, 'info');
+  }
+});
+
+processBtn.addEventListener('click', async function() {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  showStatus('⏳ Lecture du fichier...', 'info');
+  processBtn.disabled = true;
+
+  const text = await file.text();
+  
+  showStatus('⏳ Découpage en sections...', 'info');
+
+  // Définir les sections à extraire
+  const sections = {
+    'restaurants': {
+      start: '<!-- ====== RESTAURANTS ====== -->',
+      end: '<!-- ====== SORTIES & ÉVÉNEMENTS ====== -->'
+    },
+    'sorties': {
+      start: '<!-- ====== SORTIES & ÉVÉNEMENTS ====== -->',
+      end: '<!-- ====== CINÉMA ====== -->'
+    },
+    'cinema': {
+      start: '<!-- ====== CINÉMA ====== -->',
+      end: '<!-- ====== PHILHARMONIE ====== -->'
+    },
+    'philharmonie': {
+      start: '<!-- ====== PHILHARMONIE ====== -->',
+      end: '<!-- ====== BALADES & RANDONNÉES ====== -->'
+    },
+    'balades': {
+      start: '<!-- ====== BALADES & RANDONNÉES ====== -->',
+      end: '<!-- ====== PISTES CYCLABLES ====== -->'
+    },
+    'velo': {
+      start: '<!-- ====== PISTES CYCLABLES ====== -->',
+      end: '<!-- ====== MARCHES POPULAIRES ====== -->'
+    },
+    'marches': {
+      start: '<!-- ====== MARCHES POPULAIRES ====== -->',
+      end: '<!-- ====== FOOTER ====== -->'
+    }
+  };
+
+  generatedFiles = {};
+  let successCount = 0;
+  let errors = [];
+
+  // Extraire chaque section
+  for (const [name, markers] of Object.entries(sections)) {
+    const startPos = text.indexOf(markers.start);
+    const endPos = text.indexOf(markers.end);
+
+    if (startPos !== -1 && endPos !== -1 && startPos < endPos) {
+      const content = text.substring(startPos, endPos).trim();
+      generatedFiles[`${name}.html`] = content;
+      successCount++;
+    } else {
+      errors.push(name);
+    }
+  }
+
+  // Afficher les résultats
+  if (successCount > 0) {
+    showStatus(`✅ ${successCount} sections créées avec succès !`, 'success');
+    displayFiles();
+    results.style.display = 'block';
+  }
+
+  if (errors.length > 0) {
+    showStatus(`⚠️ ${successCount} sections créées. Erreurs pour : ${errors.join(', ')}`, 'error');
+  }
+
+  processBtn.disabled = false;
+});
+
+function displayFiles() {
+  fileList.innerHTML = '';
+  
+  for (const [filename, content] of Object.entries(generatedFiles)) {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    
+    const size = new Blob([content]).size;
+    const sizeKB = (size / 1024).toFixed(1);
+    
+    item.innerHTML = `
+      <div>
+        <div class="file-name">${filename}</div>
+        <div class="file-size">${sizeKB} KB</div>
+      </div>
+      <button class="download-btn" onclick="downloadFile('${filename}')">
+        ⬇️ Télécharger
+      </button>
+    `;
+    
+    fileList.appendChild(item);
+  }
+}
+
+function downloadFile(filename) {
+  const content = generatedFiles[filename];
+  const blob = new Blob([content], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+downloadAll.addEventListener('click', async function() {
+  showStatus('⏳ Création du ZIP...', 'info');
+  
+  const zip = new JSZip();
+  const sectionsFolder = zip.folder('sections');
+  
+  for (const [filename, content] of Object.entries(generatedFiles)) {
+    sectionsFolder.file(filename, content);
+  }
+  
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sections.zip';
+  a.click();
+  URL.revokeObjectURL(url);
+  
+  showStatus('✅ ZIP téléchargé !', 'success');
+});
+
+function showStatus(message, type) {
+  status.textContent = message;
+  status.className = type;
+}
+</script>
+
+</body>
+</html>
