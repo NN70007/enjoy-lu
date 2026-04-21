@@ -839,7 +839,7 @@ a, button, [role="button"], [role="link"], input, textarea, select {
   opacity: 0.7;
 }
 
-.lux-flag { display: inline-flex; width: 24px; height: 16px; border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+.lux-flag { display: inline-flex; flex-direction: column; width: 24px; height: 16px; border-radius: 2px; overflow: hidden; flex-shrink: 0; }
 .lux-flag span { flex: 1; }
 .lux-r { background: #ED2939; }
 .lux-w { background: #FFFFFF; }
