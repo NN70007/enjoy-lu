@@ -55,6 +55,9 @@ ol.stops{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;g
 label{font-size:14px;color:var(--muted);display:grid;gap:6px}
 select,input[type=range]{width:100%;font:inherit}
 select{padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.confirm{display:grid;gap:10px;padding:12px;border-radius:10px;background:var(--ria-soft)}
+.confirm p{margin:0;font-size:15px}
+button.danger{background:var(--red);color:#fff}
 .note{font-size:13px;color:var(--muted);margin:14px 0 32px}
 .user-dot{width:18px;height:18px;border-radius:50%;background:#2a7de1;border:3px solid #fff;box-shadow:0 0 0 2px rgba(42,125,225,.35)}
 .pin{width:26px;height:26px;border-radius:50%;background:var(--ria);color:#fff;font:700 12px/26px var(--sans);text-align:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
@@ -91,7 +94,17 @@ select{padding:8px;border-radius:8px;border:1px solid var(--line);background:var
     </label>
     <div class="row">
       <button id="testBtn">Tester la voix</button>
-      <button id="resetBtn" class="stop">Réinitialiser les étapes écoutées</button>
+    </div>
+  </div>
+  <h2>Visite</h2>
+  <div class="settings">
+    <button id="resetBtn" class="stop">Recommencer la visite à zéro</button>
+    <div id="confirmBox" class="confirm" hidden role="alertdialog" aria-labelledby="confirmTitle">
+      <p id="confirmTitle"><b>Êtes-vous sûr de vouloir recommencer la visite à partir de zéro ?</b><br>Toutes les étapes seront marquées comme non écoutées et l'introduction sera relancée.</p>
+      <div class="row">
+        <button id="confirmYes" class="danger">Oui, recommencer</button>
+        <button id="confirmNo">Annuler</button>
+      </div>
     </div>
   </div>
   <p class="note">Gardez cette page ouverte et l'écran allumé pendant la balade : le téléphone ne transmet plus la position quand il est verrouillé. Si une description ne se déclenche pas, appuyez sur « Écouter ». Pour une voix plus naturelle sur iPhone : Réglages › Accessibilité › Contenu énoncé › Voix › Français, puis téléchargez une voix « améliorée » ou « premium ».</p>
@@ -164,22 +177,33 @@ function renderList() {
 /* ---------- voix ---------- */
 const synth = window.speechSynthesis;
 let voices = [];
+const NOVELTY = /eloquence|eddy|flo\b|grandma|grandpa|grand-m|grand-p|reed|rocko|sandy|shelley|bahh|bells|boing|bubbles|cellos|wobble|jester|organ|trinoids|whisper|zarvox|albert|bad news|good news|superstar|junior|ralph|kathy|fred/i;
+function quality(v) {
+  const id = (v.voiceURI || '') + ' ' + v.name;
+  if (/premium/i.test(id)) return 'premium';
+  if (/enhanced|amélior/i.test(id)) return 'améliorée';
+  return '';
+}
 function scoreVoice(v) {
+  const id = (v.voiceURI || '') + ' ' + v.name;
   let s = 0;
   if (/^fr[-_]FR/i.test(v.lang)) s += 20; else if (/^fr/i.test(v.lang)) s += 10;
-  if (/premium|enhanced|amélior|neural|natural|online/i.test(v.name)) s += 15;
-  if (/google/i.test(v.name)) s += 8;
-  if (/compact|eloquence|grandma|grandpa|rocko|shelley|sandy|flo|reed/i.test(v.name)) s -= 12;
+  const q = quality(v); if (q === 'premium') s += 40; else if (q) s += 30;
+  if (/neural|natural|online|google/i.test(id)) s += 15;
+  if (NOVELTY.test(id)) s -= 60;
   return s;
 }
+const SYSTEM = '__system__';
 function loadVoices() {
   if (!synth) return;
   voices = synth.getVoices().filter(v => /^fr/i.test(v.lang)).sort((a,b) => scoreVoice(b) - scoreVoice(a));
   const sel = $('voiceSel'); const prev = sel.value; sel.innerHTML = '';
-  voices.forEach((v, i) => { const o = document.createElement('option'); o.value = v.name; o.textContent = `${v.name} (${v.lang})`; sel.appendChild(o); });
+  const def = document.createElement('option'); def.value = SYSTEM; def.textContent = 'Voix choisie dans les réglages du téléphone'; sel.appendChild(def);
+  voices.forEach(v => { const o = document.createElement('option'); o.value = v.name; const q = quality(v); o.textContent = `${v.name}${q ? ' · ' + q : ''} (${v.lang})`; sel.appendChild(o); });
   let saved = null; try { saved = localStorage.getItem('bilbao-voice'); } catch(e) {}
-  if (saved && voices.some(v => v.name === saved)) sel.value = saved; else if (prev) sel.value = prev;
-  if (!voices.length) { const o = document.createElement('option'); o.textContent = 'Aucune voix française trouvée'; sel.appendChild(o); }
+  if (saved && (saved === SYSTEM || voices.some(v => v.name === saved))) sel.value = saved;
+  else if (prev) sel.value = prev;
+  else sel.value = SYSTEM;
 }
 if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; }
 $('voiceSel').onchange = e => { try { localStorage.setItem('bilbao-voice', e.target.value); } catch(_) {} };
@@ -197,7 +221,8 @@ function speak(text, onEnd) {
   synth.cancel();
   const token = ++speakToken;
   const list = chunks(text);
-  const voice = voices.find(v => v.name === $('voiceSel').value) || voices[0];
+  const choice = $('voiceSel').value;
+  const voice = choice === SYSTEM ? null : (voices.find(v => v.name === choice) || null);
   let i = 0;
   const next = () => {
     if (token !== speakToken) return;
@@ -285,7 +310,18 @@ $('startBtn').onclick = () => {
 };
 $('stopBtn').onclick = stopSpeech;
 $('testBtn').onclick = () => speak('Bonjour, je serai votre guide aujourd’hui à Bilbao.');
-$('resetBtn').onclick = () => { played.clear(); savePlayed(); renderList(); $('now').textContent = 'Étapes réinitialisées'; };
+$('resetBtn').onclick = () => { $('confirmBox').hidden = false; $('resetBtn').hidden = true; $('confirmNo').focus(); };
+$('confirmNo').onclick = () => { $('confirmBox').hidden = true; $('resetBtn').hidden = false; };
+$('confirmYes').onclick = () => {
+  $('confirmBox').hidden = true; $('resetBtn').hidden = false;
+  stopSpeech(); played.clear(); savePlayed();
+  if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+  watchId = null; started = false;
+  $('startBtn').textContent = 'Démarrer la visite';
+  $('now').textContent = 'Visite remise à zéro';
+  renderList();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
 
 renderList();
 </script>
