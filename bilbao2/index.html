@@ -105,6 +105,7 @@ button.danger{background:var(--red);color:#fff}
       <label for="qText">Votre question (touchez le micro du clavier pour dicter), puis « Demander » : Google répond aussitôt
         <textarea id="qText" placeholder="Ex. : pourquoi la façade est-elle néogothique ?"></textarea>
       </label>
+      <button id="qClear" class="stop">Effacer la question</button>
       <div class="links">
         <a id="askGoogle" class="main" target="_blank" rel="noopener">Demander à Google IA</a>
       </div>
@@ -319,7 +320,7 @@ function stopSpeech() {
 }
 function play(stop, manual) {
   if (manual) queue = [];
-  current = stop; lastStop = stop;
+  current = stop; lastStop = stop; try { localStorage.setItem('bilbao2-last', stop.id); } catch(e) {}
   played.add(stop.id); savePlayed();
   $('now').textContent = stop.name; $('stopBtn').hidden = false;
   if (pins[stop.id] && map) pins[stop.id].openPopup();
@@ -403,13 +404,15 @@ $('confirmYes').onclick = () => {
 
 /* ---------- contexte : lieu en cours, dernier écouté ou le plus proche ---------- */
 let lastStop = null;
+try { const lid = localStorage.getItem('bilbao2-last'); if (lid) lastStop = [...STOPS, ...FOOD, OUTRO].find(s => s.id === lid) || null; } catch(e) {}
 function contextStop() {
   if (current && current.lat) return current;
+  if (lastStop) return lastStop;
   if (lastPos) {
     const all = [...STOPS, ...FOOD].map(s => ({ s, d: dist(lastPos, s) })).sort((a,b) => a.d - b.d);
     if (all[0] && all[0].d < 150) return all[0].s;
   }
-  return lastStop || STOPS.find(s => !played.has(s.id)) || STOPS[0];
+  return STOPS.find(s => !played.has(s.id)) || STOPS[0];
 }
 
 /* ---------- En savoir plus : Wikipédia ---------- */
@@ -466,11 +469,15 @@ function updateAskLinks() {
   $('askClaude').href = 'https://claude.ai/new?q=' + p;
   $('askGpt').href = 'https://chatgpt.com/?q=' + p;
   $('askGoogle').href = 'https://www.google.com/search?udm=50&q=' + p;
-  $('askCtx').textContent = 'Lieu : ' + contextStop().name;
+  $('askCtx').textContent = 'Question sur : ' + contextStop().name + (lastStop && contextStop() === lastStop ? ' (dernier lieu écouté)' : '');
 }
 $('askBtn').onclick = () => { const box = $('askBox'); box.hidden = !box.hidden; if (!box.hidden) { updateAskLinks(); $('qText').focus(); } };
 $('qText').addEventListener('input', updateAskLinks);
-['askClaude','askGpt','askGoogle'].forEach(id => $(id).addEventListener('click', updateAskLinks));
+['askClaude','askGpt','askGoogle'].forEach(id => $(id).addEventListener('click', () => {
+  updateAskLinks();
+  setTimeout(() => { $('qText').value = ''; updateAskLinks(); }, 400);   // champ vidé après l'envoi
+}));
+$('qClear').onclick = () => { $('qText').value = ''; updateAskLinks(); $('qText').focus(); };
 
 /* ---------- Orienter la carte dans le sens de la marche ---------- */
 let orient = false, compass = null, lastBearingAt = 0, course = null, prevFix = null;
