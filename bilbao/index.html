@@ -208,6 +208,23 @@ function loadVoices() {
 if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; }
 $('voiceSel').onchange = e => { try { localStorage.setItem('bilbao-voice', e.target.value); } catch(_) {} };
 
+/* Prononciation : noms basques et espagnols réécrits pour la voix française (texte affiché inchangé) */
+const PHONETIC = [
+  ['Barrenkale Barrena','Barrènkalé Barrèna'],['Barrenkale','Barrènkalé'],['Carnicería Vieja','Carnicéria Biéha'],
+  ['Siete Calles','Siété Cayèss'],['Somera','Soméra'],['Artekale','Artékalé'],['Tendería','Tendéria'],['Belostikale','Bélostikalé'],
+  ['San Antón','San Anntonne'],['Ribera','Ribéra'],['Casco Viejo','Casco Biého'],['Plaza Nueva','Plassa Nouéva'],
+  ['Euskaltzaindia','Éouskaltsaïndia'],['euskara','éouskara'],['txikiteo','tchikitéo'],['txakoli','tchakoli'],
+  ['pintxos','pinntchoss'],['pintxo','pinntcho'],['Juan Crisóstomo','Rouann Krissostomo'],['Joaquín Rucoba','Roakinn Roukoba'],
+  ['Arenal','Arénal'],['Villarías','Biyarias'],['Ensanche','Énnsanntché'],['San Nicolás','San Nicolass'],
+  ['Guggenheim','Gouguenne-haïm'],['Frank Gehry','Frank Guéri'],['Gehry','Guéri'],['Jeff Koons','Djeff Kounss'],['Puppy','Peupi'],
+  ['Anish Kapoor','Anich Kapour'],['José María Aguirre','Rossé Maria Aguirré'],["l'ETA","l'Éta"],
+  ['Zubizuri','Soubissouri'],['fosteritos','fostéritoss'],['César Pelli','Sézar Pélli'],['Iberdrola','Ibérdrola'],
+  ['Artxanda','Artchannda'],['Pagasarri','Pagassarri'],['San Mamés','San Mamèss'],['Athletic','Atlétic'],
+  ['Begoña','Bégogna'],['Amatxu','Amatchou'],['Mallona','Mayona'],['Diego López de Haro','Diégo Lopèss dé Aro'],
+  ['Pedro Ispizua','Pédro Ispissoua'],['idiazabal','idiassabal'],['bacalao al pil-pil','bacalao al pil pil'],
+  ['Joaquín','Roakinn'],['Juan','Rouann']
+];
+const phonetic = t => PHONETIC.reduce((acc, [a, b]) => acc.split(a).join(b), t);
 function chunks(text) {
   const parts = text.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
   const out = []; let buf = '';
@@ -220,7 +237,7 @@ function speak(text, onEnd) {
   if (!synth) { onEnd && onEnd(); return; }
   synth.cancel();
   const token = ++speakToken;
-  const list = chunks(text);
+  const list = chunks(phonetic(text));
   const choice = $('voiceSel').value;
   const voice = choice === SYSTEM ? null : (voices.find(v => v.name === choice) || null);
   let i = 0;
