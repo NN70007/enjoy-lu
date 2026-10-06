@@ -31,6 +31,9 @@ body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--sans);-webkit-text
 .ask textarea{width:100%;min-height:70px;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);resize:vertical}
 .ask .links{display:flex;gap:8px;flex-wrap:wrap}
 .ask a{flex:1;min-width:90px;text-align:center;text-decoration:none;font-weight:600;padding:11px 12px;border-radius:10px;background:var(--ria);color:#fff}
+.ask a.main{font-size:17px;padding:14px}
+.ask .alt{font-size:13px;color:var(--muted)}
+.ask .alt a{display:inline;flex:none;min-width:0;padding:0;background:none;color:var(--ria);text-decoration:underline}
 .ask .ctx{font-size:13px;color:var(--muted)}
 .info{font-size:14px;color:var(--muted);background:var(--ria-soft);border-radius:10px;padding:10px 12px;max-height:9em;overflow:auto}
 .info a{color:var(--ria)}
@@ -98,14 +101,13 @@ button.danger{background:var(--red);color:#fff}
     <div class="info" id="info" hidden></div>
     <div class="ask" id="askBox" hidden>
       <div class="ctx" id="askCtx"></div>
-      <label for="qText">Votre question (touchez le micro du clavier pour dicter)
+      <label for="qText">Votre question (touchez le micro du clavier pour dicter), puis « Demander » : Google répond aussitôt
         <textarea id="qText" placeholder="Ex. : pourquoi la façade est-elle néogothique ?"></textarea>
       </label>
       <div class="links">
-        <a id="askClaude" target="_blank" rel="noopener">Claude</a>
-        <a id="askGpt" target="_blank" rel="noopener">ChatGPT</a>
-        <a id="askGoogle" target="_blank" rel="noopener">Google IA</a>
+        <a id="askGoogle" class="main" target="_blank" rel="noopener">Demander à Google IA</a>
       </div>
+      <div class="alt">Autres IA : <a id="askGpt" target="_blank" rel="noopener">ChatGPT</a> · <a id="askClaude" target="_blank" rel="noopener">Claude</a></div>
     </div>
   </div>
 </div>
@@ -454,7 +456,7 @@ $('moreBtn').onclick = learnMore;
 /* ---------- Poser une question : ouvre votre IA avec le contexte ---------- */
 function buildPrompt() {
   const s = contextStop(); const q = $('qText').value.trim() || 'Raconte-moi quelque chose d’intéressant sur ce lieu.';
-  const ctx = (s.text || '').slice(0, 600);
+  const ctx = (s.text || '').slice(0, 300);
   return `Je visite Bilbao à pied et je suis devant : ${s.name}. Contexte déjà entendu dans mon audioguide : « ${ctx}… » Ma question : ${q} Réponds en français, de façon précise et concise (quelques phrases), en privilégiant les faits historiques vérifiables.`;
 }
 function updateAskLinks() {
