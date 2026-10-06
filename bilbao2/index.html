@@ -190,7 +190,14 @@ if (window.L) {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© OpenStreetMap'
   }).addTo(map);
-  const line = L.polyline(TRACK, { color: getComputedStyle(document.documentElement).getPropertyValue('--ria').trim() || '#1f6f6b', weight: 5, opacity: .85 }).addTo(map);
+  /* rendu du tracé : large marge + redessin continu pendant zoom / rotation au doigt */
+  window.routeRenderer = L.svg({ padding: 1 });
+  const line = L.polyline(TRACK, { renderer: routeRenderer, color: getComputedStyle(document.documentElement).getPropertyValue('--ria').trim() || '#1f6f6b', weight: 5, opacity: .85 }).addTo(map);
+  let rafPending = false;
+  map.on('zoom move rotate', () => {
+    if (rafPending) return; rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; try { routeRenderer._update(); } catch(e) {} });
+  });
   map.fitBounds(line.getBounds(), { padding: [20, 20] });
   STOPS.forEach((s, i) => {
     const icon = L.divIcon({ className: '', html: `<div class="pin" id="pin-${s.id}">${i+1}</div>`, iconSize: [26,26], iconAnchor: [13,13] });
@@ -356,7 +363,7 @@ function onPos(p) {
   if (map) {
     if (!userMarker) {
       userMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: '<div class="user-dot"></div>', iconSize: [18,18], iconAnchor: [9,9] }), zIndexOffset: 1000 }).addTo(map);
-      accCircle = L.circle([lat, lon], { radius: accuracy, color: '#2a7de1', weight: 1, fillOpacity: .08 }).addTo(map);
+      accCircle = L.circle([lat, lon], { renderer: window.routeRenderer, radius: accuracy, color: '#2a7de1', weight: 1, fillOpacity: .08 }).addTo(map);
     } else { userMarker.setLatLng([lat, lon]); accCircle.setLatLng([lat, lon]).setRadius(accuracy); }
   }
   if (accuracy <= 60) {
