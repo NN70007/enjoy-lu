@@ -26,6 +26,7 @@ body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--sans);-webkit-text
 .mapwrap{position:relative}
 .map-btn{position:absolute;right:12px;bottom:12px;z-index:800;background:var(--surface);color:var(--fg);
   border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.2);padding:10px 14px;font-size:14px}
+.map-btn.north{right:auto;left:12px;width:44px;padding:10px 0;font-weight:800}
 .map-btn[aria-pressed="true"]{background:var(--ria);color:#fff;border-color:var(--ria)}
 .ask{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:4px}
 .ask textarea{width:100%;min-height:70px;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);resize:vertical}
@@ -86,7 +87,8 @@ button.danger{background:var(--red);color:#fff}
 </head>
 <body>
 <div class="mapwrap"><div id="map" role="img" aria-label="Carte du parcours"></div>
-<button id="orientBtn" class="map-btn" aria-pressed="false">Orienter la carte</button></div>
+<button id="orientBtn" class="map-btn" aria-pressed="false">Orienter la carte</button>
+<button id="northBtn" class="map-btn north" aria-label="Remettre le nord en haut">N</button></div>
 
 <div class="player">
   <div class="player-inner">
@@ -184,7 +186,7 @@ const fmt = m => m < 1000 ? Math.round(m/10)*10 + ' m' : (m/1000).toFixed(1).rep
 /* ---------- carte ---------- */
 let map, userMarker, accCircle, pins = {};
 if (window.L) {
-  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, rotateControl: false, touchRotate: false, bearing: 0 });
+  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© OpenStreetMap'
   }).addTo(map);
@@ -404,6 +406,7 @@ $('confirmNo').onclick = () => { $('confirmBox').hidden = true; $('resetBtn').hi
 $('confirmYes').onclick = () => {
   $('confirmBox').hidden = true; $('resetBtn').hidden = false;
   stopSpeech(); played.clear(); savePlayed();
+  try { lastStop = null; localStorage.removeItem('bilbao2-last'); $('qText').value = ''; $('info').hidden = true; } catch(e) {}
   if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
   watchId = null; started = false;
   $('startBtn').textContent = 'Démarrer la visite';
@@ -415,20 +418,17 @@ $('confirmYes').onclick = () => {
 
 /* ---------- contexte : lieu en cours, dernier écouté ou le plus proche ---------- */
 let lastStop = null;
+const GENERAL = { id: 'general', name: 'Bilbao et ma balade à pied', text: INTRO };
 try { const lid = localStorage.getItem('bilbao2-last'); if (lid) lastStop = [...STOPS, ...FOOD, OUTRO].find(s => s.id === lid) || null; } catch(e) {}
 function contextStop() {
   if (current && current.lat) return current;
   if (lastStop) return lastStop;
-  if (lastPos) {
-    const all = [...STOPS, ...FOOD].map(s => ({ s, d: dist(lastPos, s) })).sort((a,b) => a.d - b.d);
-    if (all[0] && all[0].d < 150) return all[0].s;
-  }
-  return STOPS.find(s => !played.has(s.id)) || STOPS[0];
+  return GENERAL;   // rien d'écouté depuis le début (ou après remise à zéro) : Bilbao en général
 }
 
 /* ---------- En savoir plus : Wikipédia ---------- */
 const WIKI = {
-  anton: 'Église San Antón de Bilbao', ribera: 'Marché de la Ribera', catedral: 'Cathédrale Santiago de Bilbao',
+  general: 'Bilbao', anton: 'Église San Antón de Bilbao', ribera: 'Marché de la Ribera', catedral: 'Cathédrale Santiago de Bilbao',
   plazanueva: 'Plaza Nueva (Bilbao)', arriaga: 'Théâtre Arriaga', decathlon: 'Abando',
   guggenheim: 'Musée Guggenheim de Bilbao', zubizuri: 'Zubizuri', funicular: "Funiculaire d'Artxanda", begona: 'Basilique de Begoña'
 };
@@ -473,7 +473,8 @@ $('moreBtn').onclick = learnMore;
 function buildPrompt() {
   const s = contextStop(); const q = $('qText').value.trim() || 'Raconte-moi quelque chose d’intéressant sur ce lieu.';
   const ctx = (s.text || '').slice(0, 300);
-  return `Je visite Bilbao à pied et je suis devant : ${s.name}. Contexte déjà entendu dans mon audioguide : « ${ctx}… » Ma question : ${q} Réponds en français, de façon précise et concise (quelques phrases), en privilégiant les faits historiques vérifiables.`;
+  const lieu = s === GENERAL ? 'Je fais une balade à pied dans Bilbao (vieille ville, ría, Guggenheim, Artxanda, Begoña).' : `Je visite Bilbao à pied et je suis devant : ${s.name}.`;
+  return `${lieu} Contexte déjà entendu dans mon audioguide : « ${ctx}… » Ma question : ${q} Réponds en français, de façon précise et concise (quelques phrases), en privilégiant les faits historiques vérifiables.`;
 }
 function updateAskLinks() {
   const p = encodeURIComponent(buildPrompt());
@@ -537,6 +538,7 @@ async function toggleOrient() {
         const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') compass = null;
       }
     } catch (e) {}
+    try { map.touchRotate.disable(); } catch(e) {}
     window.addEventListener('deviceorientation', onOrientation);
     window.addEventListener('deviceorientationabsolute', onOrientation);
     if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 17));
@@ -545,9 +547,11 @@ async function toggleOrient() {
     window.removeEventListener('deviceorientation', onOrientation);
     window.removeEventListener('deviceorientationabsolute', onOrientation);
     map.setBearing(0);
+    try { map.touchRotate.enable(); } catch(e) {}
   }
 }
 $('orientBtn').onclick = toggleOrient;
+$('northBtn').onclick = () => { if (orient) toggleOrient(); else if (map && map.setBearing) map.setBearing(0); };
 
 renderList();
 </script>
