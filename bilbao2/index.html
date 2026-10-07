@@ -195,10 +195,13 @@ if (window.L) {
   window.routeRenderer = L.svg({ padding: 1 });
   const line = L.polyline(TRACK, { renderer: routeRenderer, color: getComputedStyle(document.documentElement).getPropertyValue('--ria').trim() || '#1f6f6b', weight: 5, opacity: .85 }).addTo(map);
   let rafPending = false;
-  map.on('zoom move rotate', () => {
+  /* pendant que les doigts sont sur l'écran : on recalcule le tracé à chaque image
+     à l'échelle et à l'angle courants, pour qu'il reste collé à la carte */
+  const redrawRoute = () => {
     if (rafPending) return; rafPending = true;
-    requestAnimationFrame(() => { rafPending = false; try { routeRenderer._update(); } catch(e) {} });
-  });
+    requestAnimationFrame(() => { rafPending = false; try { routeRenderer._reset(); } catch(e) { try { routeRenderer._update(); } catch(_) {} } });
+  };
+  map.on('zoom move rotate viewreset', redrawRoute);
   map.fitBounds(line.getBounds(), { padding: [20, 20] });
   STOPS.forEach((s, i) => {
     const icon = L.divIcon({ className: '', html: `<div class="pin" id="pin-${s.id}">${i+1}</div>`, iconSize: [26,26], iconAnchor: [13,13] });
