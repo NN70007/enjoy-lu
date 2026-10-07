@@ -187,7 +187,8 @@ const fmt = m => m < 1000 ? Math.round(m/10)*10 + ' m' : (m/1000).toFixed(1).rep
 /* ---------- carte ---------- */
 let map, userMarker, accCircle, pins = {};
 if (window.L) {
-  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 });
+  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, rotateControl: false, touchRotate: true, bearing: 0,
+    zoomSnap: 0, zoomDelta: 0.5, bounceAtZoomLimits: false });   /* pas de saut de zoom quand on relâche les doigts */
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© OpenStreetMap'
   }).addTo(map);
