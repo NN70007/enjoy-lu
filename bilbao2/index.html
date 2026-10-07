@@ -40,6 +40,11 @@ body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--sans);-webkit-text
 .info{font-size:14px;color:var(--muted);background:var(--ria-soft);border-radius:10px;padding:10px 12px;max-height:9em;overflow:auto}
 .info a{color:var(--ria)}
 .extras{display:grid;gap:10px;padding-block:10px 0}
+.around .stop-item{grid-template-columns:30px 1fr auto}
+.arrow{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;font-weight:800;color:#fff;background:#d9822b;transition:transform .25s}
+.around-btns{display:flex;flex-direction:column;gap:6px}
+.around-btns a.gbtn{flex:none;min-width:0;padding:8px 12px;font-size:14px;text-align:center}
+#viseBtn[aria-pressed="true"]{background:#d9822b;color:#fff}
 .extras:empty{display:none}
 .wrap{padding-inline:16px;max-width:680px;margin:0 auto}
 .player{position:sticky;top:0;z-index:500;background:var(--surface);border-bottom:1px solid var(--line);
@@ -103,6 +108,7 @@ button.danger{background:var(--red);color:#fff}
     <div class="row">
       <button id="moreBtn">En savoir plus</button>
       <button id="askBtn">Poser une question</button>
+      <button id="aroundBtn">Autour de moi</button>
     </div>
   </div>
 </div>
@@ -122,6 +128,16 @@ button.danger{background:var(--red);color:#fff}
         <a id="askGoogle" class="main" target="_blank" rel="noopener">Demander à Google IA</a>
       </div>
       <div class="alt">Autres IA : <a id="askGpt" target="_blank" rel="noopener">ChatGPT</a> · <a id="askClaude" target="_blank" rel="noopener">Claude</a></div>
+    </div>
+    <div class="ask around" id="aroundBox" hidden>
+      <div class="row">
+        <button id="viseBtn" aria-pressed="false">Je vise</button>
+        <button id="aroundRefresh">Actualiser</button>
+        <button id="aroundClose" class="stop">Fermer</button>
+      </div>
+      <div class="ctx" id="aroundStatus"></div>
+      <ol class="stops" id="aroundList"></ol>
+      <div class="alt">Lieux répertoriés sur Wikipédia autour de votre position. Mode « Je vise » : tenez le téléphone à plat, le haut pointé vers ce qui vous intéresse.</div>
     </div>
 </section>
 
@@ -383,6 +399,7 @@ function onPos(p) {
     }
   }
   renderList();
+  try { if (aroundOpen) refreshAround(false); } catch(e) {}
 }
 function onErr(e) {
   $('gpsDot').className = 'dot warn';
@@ -463,7 +480,7 @@ async function learnMore() {
   const s = contextStop();
   const info = $('info'); info.hidden = false; info.textContent = 'Recherche sur Wikipédia : ' + s.name + '…';
   try {
-    let res = WIKI[s.id] ? await wikiExtract(WIKI[s.id]) : null;
+    let res = WIKI[s.id] ? await wikiExtract(WIKI[s.id]) : (String(s.id).startsWith('geo-') ? await wikiExtract(s.name) : null);
     if (!res) { const t = await wikiSearch(s.name + ' Bilbao'); if (t) res = await wikiExtract(t); }
     if (!res) { info.textContent = 'Pas d’article Wikipédia trouvé pour ' + s.name + '.'; return; }
     let text = cleanForSpeech(res.text);
@@ -564,6 +581,172 @@ async function toggleOrient() {
 }
 $('orientBtn').onclick = toggleOrient;
 $('northBtn').onclick = () => { if (orient) toggleOrient(); else if (map && map.setBearing) map.setBearing(0); };
+
+/* ---------- Autour de moi / Je vise (lieux Wikipédia géolocalisés) ---------- */
+const AROUND_R = 300, VISE_R = 250, VISE_HALF = 25, VISE_NEAR = 40;
+let aroundOpen = false, vise = false, viseHeading = null, aroundItems = [], aroundFetchedAt = 0, aroundFetchPos = null, aroundRenderAt = 0;
+let aroundLayer = null, coneLayer = null, viseTimer = null;
+function relAngle(b, h) { return ((b - h + 540) % 360) - 180; }
+function cardinal(b) { return ['vers le nord','vers le nord-est','vers l’est','vers le sud-est','vers le sud','vers le sud-ouest','vers l’ouest','vers le nord-ouest'][Math.round(b / 45) % 8]; }
+function destPoint(p, brg, d) {
+  const R = 6371000, r = Math.PI/180, la = p.lat*r, lo = p.lon*r, t = brg*r, dr = d/R;
+  const la2 = Math.asin(Math.sin(la)*Math.cos(dr) + Math.cos(la)*Math.sin(dr)*Math.cos(t));
+  const lo2 = lo + Math.atan2(Math.sin(t)*Math.sin(dr)*Math.cos(la), Math.cos(dr) - Math.sin(la)*Math.sin(la2));
+  return [la2/r, lo2/r];
+}
+function aroundPosition() {
+  return new Promise((res, rej) => {
+    if (lastPos) return res(lastPos);
+    if (!navigator.geolocation) return rej({ code: 2 });
+    navigator.geolocation.getCurrentPosition(p => { lastPos = { lat: p.coords.latitude, lon: p.coords.longitude }; res(lastPos); },
+      rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+  });
+}
+async function fetchAround(pos) {
+  const r = await fetch(WAPI + 'action=query&list=geosearch&gsradius=500&gslimit=50&gscoord=' + pos.lat.toFixed(5) + '%7C' + pos.lon.toFixed(5));
+  const j = await r.json();
+  aroundItems = ((j.query || {}).geosearch || []).map(g => ({ id: 'geo-' + g.pageid, title: g.title, lat: g.lat, lon: g.lon }));
+  aroundFetchedAt = Date.now(); aroundFetchPos = { lat: pos.lat, lon: pos.lon };
+}
+async function refreshAround(force) {
+  if (!aroundOpen) return;
+  const st = $('aroundStatus');
+  try {
+    const pos = await aroundPosition();
+    if (force || !aroundFetchPos || dist(aroundFetchPos, pos) > 80 || Date.now() - aroundFetchedAt > 180000) {
+      st.textContent = 'Recherche des lieux autour de vous…';
+      await fetchAround(pos);
+    }
+    renderAround();
+  } catch (e) {
+    st.textContent = e && e.code === 1
+      ? 'Localisation refusée : autorisez-la dans les réglages du navigateur pour utiliser « Autour de moi ».'
+      : 'Impossible de charger les lieux (signal GPS ou connexion). Appuyez sur Actualiser.';
+  }
+}
+function setContextFromAround(it, text) {
+  const changed = !lastStop || lastStop.id !== it.id;
+  lastStop = { id: it.id, name: it.title, text: text || (lastStop && lastStop.id === it.id ? lastStop.text : ''), lat: it.lat, lon: it.lon };
+  if (changed) { $('qText').value = ''; }
+  updateAskLinks();
+}
+async function listenAround(it) {
+  const info = $('info'); info.hidden = false; info.textContent = 'Recherche sur Wikipédia : ' + it.title + '…';
+  try {
+    const res = await wikiExtract(it.title);
+    if (!res) { info.textContent = 'Pas de résumé Wikipédia disponible pour ' + it.title + '.'; setContextFromAround(it, ''); return; }
+    let text = cleanForSpeech(res.text);
+    if (text.length > 1800) text = text.slice(0, 1800).replace(/[^.]*$/, '');
+    setContextFromAround(it, text);
+    info.innerHTML = ''; const b = document.createElement('b'); b.textContent = res.title; info.appendChild(b);
+    info.appendChild(document.createTextNode(' · Wikipédia — '));
+    const a = document.createElement('a'); a.href = 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(res.title.replace(/ /g, '_'));
+    a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'ouvrir l’article'; info.appendChild(a);
+    current = { id: it.id, name: res.title, text, lat: it.lat, lon: it.lon };
+    $('now').textContent = res.title + ' (autour de moi)'; $('stopBtn').hidden = false;
+    speak(res.title + '. ' + text, () => { current = null; $('stopBtn').hidden = true; $('now').textContent = 'En route…'; renderList(); });
+  } catch (e) {
+    info.textContent = 'Wikipédia ne répond pas (connexion ?). Réessayez dans un instant.';
+  }
+}
+function drawAroundOnMap(list) {
+  if (!map) return;
+  if (!aroundLayer) aroundLayer = L.layerGroup().addTo(map);
+  aroundLayer.clearLayers();
+  list.forEach((x, i) => {
+    L.circleMarker([x.it.lat, x.it.lon], { renderer: window.routeRenderer, radius: (vise && i === 0) ? 9 : 6, color: '#fff', weight: 2,
+      fillColor: '#d9822b', fillOpacity: 1 }).bindPopup(x.it.title).addTo(aroundLayer);
+  });
+  if (coneLayer) { map.removeLayer(coneLayer); coneLayer = null; }
+  if (vise && viseHeading !== null && lastPos) {
+    const pts = [[lastPos.lat, lastPos.lon]];
+    for (let a = -VISE_HALF; a <= VISE_HALF; a += 5) pts.push(destPoint(lastPos, viseHeading + a, VISE_R));
+    coneLayer = L.polygon(pts, { renderer: window.routeRenderer, color: '#d9822b', weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
+  }
+}
+function renderAround() {
+  if (!aroundOpen) return;
+  aroundRenderAt = Date.now();
+  const st = $('aroundStatus'), ol = $('aroundList');
+  if (!lastPos) { st.textContent = 'En attente de votre position…'; return; }
+  const h = vise ? viseHeading : null;
+  let list = aroundItems.map(it => ({ it, d: dist(lastPos, it), b: bearingTo(lastPos, it) }));
+  if (h !== null) {
+    list = list.filter(x => x.d <= VISE_NEAR || (x.d <= VISE_R && Math.abs(relAngle(x.b, h)) <= VISE_HALF))
+               .map(x => ({ ...x, off: x.d <= VISE_NEAR ? 0 : Math.abs(relAngle(x.b, h)) }))
+               .sort((a, b) => (a.off - b.off) || (a.d - b.d));
+  } else {
+    list = list.filter(x => x.d <= AROUND_R).sort((a, b) => a.d - b.d);
+  }
+  list = list.slice(0, 12);
+  if (vise && h === null) st.textContent = 'Boussole en attente : bougez un peu le téléphone. En attendant, voici tout ce qui est autour de vous.';
+  else if (!list.length) st.textContent = h !== null ? 'Rien de répertorié dans cette direction jusqu’à ' + VISE_R + ' m. Tournez-vous un peu.' : 'Aucun lieu répertorié sur Wikipédia à moins de ' + AROUND_R + ' m.';
+  else st.textContent = h !== null ? 'Dans la direction visée (jusqu’à ' + VISE_R + ' m) : le plus dans l’axe en premier.' : list.length + (list.length > 1 ? ' lieux' : ' lieu') + ' à moins de ' + AROUND_R + ' m, du plus proche au plus loin.';
+  ol.innerHTML = '';
+  list.forEach((x, i) => {
+    const li = document.createElement('li');
+    li.className = 'stop-item' + (h !== null && i === 0 ? ' playing' : '');
+    const rot = h !== null ? relAngle(x.b, h) : x.b;
+    li.innerHTML = '<span class="arrow" aria-hidden="true">↑</span><div style="min-width:0"><div class="stop-name"></div><div class="stop-meta"></div></div><div class="around-btns"></div>';
+    li.querySelector('.arrow').style.transform = 'rotate(' + Math.round(rot) + 'deg)';
+    li.querySelector('.stop-name').textContent = x.it.title;
+    li.querySelector('.stop-meta').textContent = fmt(x.d) + (h !== null ? (x.d <= VISE_NEAR ? ' · tout près' : ' · ' + (Math.abs(relAngle(x.b, h)) < 8 ? 'droit devant' : relAngle(x.b, h) < 0 ? 'un peu à gauche' : 'un peu à droite')) : ' · ' + cardinal(x.b));
+    const bt = li.querySelector('.around-btns');
+    const b1 = document.createElement('button'); b1.textContent = 'Écouter'; b1.onclick = () => listenAround(x.it); bt.appendChild(b1);
+    const a = document.createElement('a'); a.className = 'gbtn'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Google IA';
+    a.href = 'https://www.google.com/search?udm=50&q=' + encodeURIComponent('Je visite Bilbao à pied et je suis à environ ' + Math.round(x.d) + ' mètres de : ' + x.it.title + '. Qu’est-ce que c’est et qu’y a-t-il d’intéressant à savoir (histoire, architecture, anecdotes) ? Réponds en français, de façon précise et concise, en privilégiant les faits vérifiables.');
+    a.addEventListener('click', () => setContextFromAround(x.it, null));
+    bt.appendChild(a);
+    ol.appendChild(li);
+  });
+  drawAroundOnMap(list);
+}
+function onViseOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h === null) return;
+  const so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : 0;
+  const first = viseHeading === null;
+  viseHeading = (h + so) % 360;
+  if (first || Date.now() - aroundRenderAt > 300) renderAround();
+  else if (!viseTimer) viseTimer = setTimeout(() => { viseTimer = null; renderAround(); }, 320);   // dernière position toujours affichée
+}
+async function toggleVise() {
+  vise = !vise;
+  $('viseBtn').setAttribute('aria-pressed', String(vise));
+  $('viseBtn').textContent = vise ? 'Je vise : activé' : 'Je vise';
+  if (vise) {
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') { $('aroundStatus').textContent = 'Accès à la boussole refusé : le mode « Je vise » ne peut pas fonctionner.'; }
+      }
+    } catch (e) {}
+    window.addEventListener('deviceorientation', onViseOrient);
+    window.addEventListener('deviceorientationabsolute', onViseOrient);
+  } else {
+    window.removeEventListener('deviceorientation', onViseOrient);
+    window.removeEventListener('deviceorientationabsolute', onViseOrient);
+    viseHeading = null;
+  }
+  renderAround();
+}
+function setAround(open) {
+  aroundOpen = open;
+  $('aroundBox').hidden = !open;
+  $('aroundBtn').textContent = open ? 'Fermer Autour de moi' : 'Autour de moi';
+  if (open) { refreshAround(false); $('aroundBox').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  else {
+    if (vise) toggleVise();
+    if (aroundLayer) aroundLayer.clearLayers();
+    if (coneLayer && map) { map.removeLayer(coneLayer); coneLayer = null; }
+  }
+}
+$('aroundBtn').onclick = () => setAround($('aroundBox').hidden);
+$('aroundClose').onclick = () => setAround(false);
+$('aroundRefresh').onclick = () => refreshAround(true);
+$('viseBtn').onclick = toggleVise;
 
 renderList();
 </script>
