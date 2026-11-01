@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="theme-color" content="#1d2a2c">
+<title>Rome à pied · Saint-Louis → Popolo (v3)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+/* Layout: carte en haut, lecteur collant, liste des étapes en dessous */
+:root{
+  --bg:#f3f4f2; --surface:#ffffff; --fg:#1b2224; --muted:#5d686b; --line:#d9dddb;
+  --ria:#1f6f6b; --ria-soft:#e1efed; --red:#b3262e; --titan:#8a9599;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121819; --surface:#1b2325; --fg:#e8eceb; --muted:#9aa5a7; --line:#2c3638;
+  --ria:#4fb3ab; --ria-soft:#1d3433; --red:#e0565d; --titan:#a7b1b4; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--sans);-webkit-text-size-adjust:100%;
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+#map{height:42vh;min-height:260px;width:100%;background:var(--line)}
+.mapwrap{position:relative}
+.map-btn{position:absolute;right:12px;bottom:12px;z-index:800;background:var(--surface);color:var(--fg);
+  border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.2);padding:10px 14px;font-size:14px}
+.map-btn.north{right:auto;left:12px;width:44px;padding:10px 0;font-weight:800}
+.map-btn[aria-pressed="true"]{background:var(--ria);color:#fff;border-color:var(--ria)}
+[hidden]{display:none!important}
+.ask{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:4px}
+.ask textarea{width:100%;min-height:70px;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);resize:vertical}
+.ask .links{display:flex;gap:8px;flex-wrap:wrap}
+.ask a{flex:1;min-width:90px;text-align:center;text-decoration:none;font-weight:600;padding:11px 12px;border-radius:10px;background:var(--ria);color:#fff}
+.ask a.main{font-size:17px;padding:14px}
+.ask .alt{font-size:13px;color:var(--muted)}
+.ask .alt a{display:inline;flex:none;min-width:0;padding:0;background:none;color:var(--ria);text-decoration:underline}
+.ask .ctx{font-size:13px;color:var(--muted)}
+.info{font-size:14px;color:var(--muted);background:var(--ria-soft);border-radius:10px;padding:10px 12px;max-height:9em;overflow:auto}
+.info a{color:var(--ria)}
+.extras{display:grid;gap:10px;padding-block:10px 0}
+.around .stop-item{grid-template-columns:30px 1fr auto}
+.arrow{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;font-weight:800;color:#fff;background:#d9822b;transition:transform .25s}
+.around-btns{display:flex;flex-direction:column;gap:6px}
+.around-btns a.gbtn{flex:none;min-width:0;padding:8px 12px;font-size:14px;text-align:center}
+#viseBtn[aria-pressed="true"]{background:#d9822b;color:#fff}
+.extras:empty{display:none}
+.wrap{padding-inline:16px;max-width:680px;margin:0 auto}
+.player{position:sticky;top:0;z-index:500;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:12px 16px calc(12px);padding-top:calc(12px + env(safe-area-inset-top,0px))}
+.player-inner{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--titan);flex:none}
+.dot.on{background:var(--ria);box-shadow:0 0 0 4px var(--ria-soft)}
+.dot.warn{background:var(--red)}
+.now{font-weight:650;font-size:17px;line-height:1.3;text-wrap:balance}
+.next{font-size:14px;color:var(--muted)}
+.next b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;border:0;border-radius:10px;padding:11px 16px;cursor:pointer;
+  background:var(--ria-soft);color:var(--ria);font-weight:600}
+button.primary{background:var(--ria);color:#fff;flex:1;font-size:17px;padding:14px}
+button.stop{background:transparent;color:var(--red);border:1px solid var(--line)}
+button:focus-visible{outline:3px solid var(--ria);outline-offset:2px}
+h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
+ol.stops{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.stop-item{background:var(--surface);padding:12px 14px;display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center}
+.num{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;
+  background:var(--ria-soft);color:var(--ria);font-variant-numeric:tabular-nums}
+.stop-item.done .num{background:var(--ria);color:#fff}
+.stop-item.playing{background:var(--ria-soft)}
+.stop-name{font-weight:600;min-width:0}
+.stop-meta{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stop-item button{padding:8px 12px;font-size:14px}
+.settings{display:grid;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+label{font-size:14px;color:var(--muted);display:grid;gap:6px}
+select,input[type=range]{width:100%;font:inherit}
+select{padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.confirm{display:grid;gap:10px;padding:12px;border-radius:10px;background:var(--ria-soft)}
+.confirm p{margin:0;font-size:15px}
+button.danger{background:var(--red);color:#fff}
+.note{font-size:13px;color:var(--muted);margin:14px 0 32px}
+.user-dot{width:18px;height:18px;border-radius:50%;background:#2a7de1;border:3px solid #fff;box-shadow:0 0 0 2px rgba(42,125,225,.35)}
+.pin{width:26px;height:26px;border-radius:50%;background:var(--ria);color:#fff;font:700 12px/26px var(--sans);text-align:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.pin.done{background:var(--titan)}
+.pin.food{background:var(--red);width:24px;height:24px;line-height:24px;border-radius:6px}
+.num.food{background:var(--red);color:#fff;border-radius:7px}
+.pin.sight,.num.sight{background:var(--ria);font-style:italic}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="mapwrap"><div id="map" role="img" aria-label="Carte du parcours"></div>
+<button id="orientBtn" class="map-btn" aria-pressed="false">Orienter la carte</button>
+<button id="northBtn" class="map-btn north" aria-label="Remettre le nord en haut">N</button></div>
+
+<div class="player">
+  <div class="player-inner">
+    <div class="status"><span class="dot" id="gpsDot"></span><span id="gpsText">GPS inactif · appuyez sur Démarrer</span></div>
+    <div class="now" id="now">Prêt pour la balade</div>
+    <div class="next" id="next"></div>
+    <div class="row">
+      <button class="primary" id="startBtn">Démarrer la visite</button>
+      <button class="stop" id="stopBtn" hidden>Arrêter la voix</button>
+    </div>
+    <div class="row">
+      <button id="moreBtn">En savoir plus</button>
+      <button id="askBtn">Poser une question</button>
+      <button id="aroundBtn">Autour de moi</button>
+    </div>
+  </div>
+</div>
+
+<section class="wrap extras">
+    <div class="info" id="info" hidden></div>
+    <div class="ask" id="askBox" hidden>
+      <div class="ctx" id="askCtx"></div>
+      <label for="qText">Votre question (touchez le micro du clavier pour dicter), puis « Demander » : Google répond aussitôt
+        <textarea id="qText" placeholder="Ex. : qui a sculpté cette fontaine ?"></textarea>
+      </label>
+      <div class="row">
+        <button id="qClear" class="stop">Effacer la question</button>
+        <button id="askClose" class="stop">Fermer</button>
+      </div>
+      <div class="links">
+        <a id="askGoogle" class="main" target="_blank" rel="noopener">Demander à Google IA</a>
+      </div>
+      <div class="alt">Autres IA : <a id="askGpt" target="_blank" rel="noopener">ChatGPT</a> · <a id="askClaude" target="_blank" rel="noopener">Claude</a></div>
+    </div>
+    <div class="ask around" id="aroundBox" hidden>
+      <div class="row">
+        <button id="viseBtn" aria-pressed="false">Je vise</button>
+        <button id="aroundRefresh">Actualiser</button>
+        <button id="aroundClose" class="stop">Fermer</button>
+      </div>
+      <div class="ctx" id="aroundStatus"></div>
+      <ol class="stops" id="aroundList"></ol>
+      <div class="alt">Lieux répertoriés sur Wikipédia autour de votre position. Mode « Je vise » : tenez le téléphone à plat, le haut pointé vers ce qui vous intéresse.</div>
+    </div>
+</section>
+
+<main class="wrap">
+  <h2>Étapes</h2>
+  <ol class="stops" id="stops"></ol>
+
+  <h2 id="foodTitle" hidden>Sur le retour</h2>
+  <ol class="stops" id="food"></ol>
+
+  <h2>Voix</h2>
+  <div class="settings">
+    <label for="voiceSel">Voix française
+      <select id="voiceSel"></select>
+    </label>
+    <label for="rate">Vitesse de lecture
+      <input type="range" id="rate" min="0.8" max="1.2" step="0.05" value="1">
+    </label>
+    <div class="row">
+      <button id="testBtn">Tester la voix</button>
+    </div>
+  </div>
+  <h2>Visite</h2>
+  <div class="settings">
+    <button id="resetBtn" class="stop">Recommencer la visite à zéro</button>
+    <div id="confirmBox" class="confirm" hidden role="alertdialog" aria-labelledby="confirmTitle">
+      <p id="confirmTitle"><b>Êtes-vous sûr de vouloir recommencer la visite à partir de zéro ?</b><br>Toutes les étapes seront marquées comme non écoutées et l'introduction sera relancée.</p>
+      <div class="row">
+        <button id="confirmYes" class="danger">Oui, recommencer</button>
+        <button id="confirmNo">Annuler</button>
+      </div>
+    </div>
+  </div>
+  <p class="note">Gardez cette page ouverte et l'écran allumé pendant la balade : le téléphone ne transmet plus la position quand il est verrouillé. Si une description ne se déclenche pas, appuyez sur « Écouter ». Pour une voix plus naturelle sur iPhone : Réglages › Accessibilité › Contenu énoncé › Voix › Français, puis téléchargez une voix « améliorée » ou « premium ».</p>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+<script>
+const TRACK = [[41.89961,12.47482],[41.89957,12.47483],[41.89948,12.47483],[41.89946,12.47483],[41.89942,12.47484],[41.89939,12.47484],[41.89939,12.47406],[41.89939,12.47405],[41.89939,12.47401],[41.89939,12.47399],[41.89939,12.47386],[41.89939,12.47379],[41.89938,12.47378],[41.89935,12.47378],[41.89914,12.4738],[41.89914,12.47379],[41.89912,12.4734],[41.89912,12.47331],[41.89911,12.47325],[41.89921,12.47291],[41.89921,12.47285],[41.89896,12.47287],[41.89921,12.47285],[41.89981,12.4728],[41.89986,12.47279],[41.89989,12.4728],[41.89992,12.47281],[41.89995,12.47282],[41.89997,12.47284],[41.89999,12.47287],[41.9,12.4729],[41.90002,12.47294],[41.90002,12.47297],[41.90003,12.47301],[41.90003,12.47305],[41.90002,12.47308],[41.90001,12.47312],[41.90009,12.47317],[41.90018,12.47331],[41.90024,12.47341],[41.90027,12.47341],[41.90036,12.47341],[41.90037,12.47341],[41.90046,12.47341],[41.90046,12.47347],[41.90046,12.47361],[41.90045,12.47365],[41.90045,12.47369],[41.90044,12.47372],[41.90046,12.47375],[41.90049,12.47378],[41.9005,12.47381],[41.90051,12.47384],[41.90052,12.47387],[41.90052,12.47391],[41.90052,12.47397],[41.90053,12.47406],[41.90055,12.47406],[41.90081,12.47402],[41.9008,12.47408],[41.90079,12.47425],[41.90078,12.47443],[41.90078,12.47448],[41.90058,12.47445],[41.90053,12.47445],[41.90054,12.47459],[41.90054,12.47478],[41.90054,12.47484],[41.90089,12.47488],[41.90167,12.47497],[41.90187,12.475],[41.90197,12.47501],[41.9022,12.47505],[41.90273,12.47512],[41.90281,12.47513],[41.90293,12.47515],[41.90298,12.47515],[41.90311,12.47517],[41.90312,12.47523],[41.90312,12.47524],[41.90314,12.47525],[41.90315,12.47526],[41.90316,12.47526],[41.90318,12.47526],[41.90324,12.47526],[41.90324,12.47526],[41.90324,12.47525],[41.90325,12.47525],[41.90325,12.47525],[41.90326,12.47525],[41.90439,12.47542],[41.90441,12.47547],[41.90444,12.47547],[41.90447,12.47547],[41.9045,12.47546],[41.90458,12.47546],[41.90459,12.47548],[41.90461,12.47548],[41.90464,12.47547],[41.90478,12.47549],[41.90479,12.47547],[41.90481,12.47547],[41.90485,12.47548],[41.90485,12.47549],[41.90486,12.4755],[41.90486,12.47555],[41.90487,12.47555],[41.90489,12.47555],[41.90492,12.47556],[41.90494,12.47556],[41.90496,12.47557],[41.90496,12.47553],[41.90497,12.47552],[41.90498,12.47552],[41.90501,12.47552],[41.90519,12.47556],[41.90519,12.47558],[41.90523,12.47559],[41.90529,12.47591],[41.90531,12.47592],[41.90531,12.47603],[41.9053,12.47617],[41.9053,12.47632],[41.90528,12.47664],[41.90546,12.47664],[41.90546,12.47667],[41.90558,12.47666],[41.90546,12.47667],[41.90546,12.47664],[41.90528,12.47664],[41.9053,12.47632],[41.9053,12.47617],[41.90531,12.47603],[41.90531,12.47592],[41.90529,12.47591],[41.90523,12.47559],[41.90519,12.47558],[41.90519,12.47556],[41.90501,12.47552],[41.90501,12.4755],[41.90501,12.47546],[41.90501,12.47544],[41.90501,12.47543],[41.90501,12.47542],[41.90499,12.47542],[41.90498,12.47541],[41.905,12.47522],[41.905,12.47521],[41.90501,12.47521],[41.90536,12.47524],[41.90571,12.47527],[41.90576,12.47527],[41.90584,12.47527],[41.90592,12.47528],[41.90595,12.47528],[41.90614,12.47526],[41.90632,12.47524],[41.90665,12.47519],[41.90666,12.47522],[41.90665,12.47529],[41.90655,12.4756],[41.90655,12.47563],[41.90655,12.47563],[41.9066,12.47564],[41.90663,12.47565],[41.90666,12.47565],[41.90672,12.47566],[41.90674,12.47567],[41.90674,12.4757],[41.90673,12.47575],[41.90694,12.47578],[41.90719,12.47582],[41.90733,12.47584],[41.90736,12.47585],[41.90744,12.47586],[41.90804,12.47595],[41.90858,12.47604],[41.9086,12.47605],[41.9086,12.47599],[41.90863,12.476],[41.90915,12.47607],[41.90916,12.47607],[41.90919,12.47608],[41.90921,12.47608],[41.90922,12.47609],[41.90974,12.47618],[41.90976,12.47619],[41.90978,12.47619],[41.9098,12.47619],[41.9098,12.47621],[41.90988,12.47621]];
+const INTRO = "Bonjour, et bon anniversaire ! Cette petite balade vous mène de Saint-Louis-des-Français jusqu'à la piazza del Popolo, à travers le Champ de Mars. Dans l'Antiquité, c'était une grande plaine au bord du Tibre, hors de la ville, consacrée au dieu Mars : on y entraînait les soldats et on y votait. Les empereurs l'ont couverte de monuments, puis, au Moyen Âge, les Romains se sont serrés ici, près du fleuve, et c'est devenu le cœur de la ville. Au programme : la place Navone, un Caravage dans l'église Saint-Augustin, le tombeau de l'empereur Auguste et son autel de la Paix, puis la via di Ripetta jusqu'au restaurant. Environ deux kilomètres, une demi-heure de marche. Je vous parlerai à chaque étape ; si je reste silencieux, appuyez sur Écouter. Bonne promenade.";
+const STOPS = [{"id": "navona", "name": "Piazza Navona", "lat": 41.89897, "lon": 12.47309, "radius": 60, "text": "Bienvenue sur la place Navone. Regardez sa forme toute en longueur, arrondie au nord : c'est exactement celle du stade construit ici par l'empereur Domitien vers l'an 86, pour des concours athlétiques. Les maisons ont été bâties sur les gradins du stade, et la place en a gardé le dessin. Au centre, la fontaine des Quatre-Fleuves, du Bernin, inaugurée en 1651 pour le pape Innocent Dix, dont la famille, les Pamphili, avait son palais sur la place. Quatre géants représentent quatre grands fleuves et quatre continents : le Nil, le Danube, le Gange et le Río de la Plata. Le Nil a la tête voilée, parce qu'à l'époque on ignorait où se trouvaient ses sources. On raconte qu'une des statues se protège les yeux pour ne pas voir l'église Sainte-Agnès, œuvre de Borromini, le grand rival du Bernin. C'est une jolie légende, mais elle est fausse : la façade de l'église a été construite après la fontaine. Autre curiosité : pendant deux siècles, les week-ends d'août, on bouchait les évacuations des fontaines pour inonder la place, et les carrosses des nobles se promenaient dans l'eau."}, {"id": "agostino", "name": "Basilique Saint-Augustin", "lat": 41.90084, "lon": 12.47426, "radius": 40, "text": "Voici la basilique Saint-Augustin, l'une des premières églises de la Renaissance à Rome, construite à la fin du quinzième siècle. Le dimanche, elle ferme à midi et demi : si elle est ouverte, entrez vite. Dans la première chapelle à gauche se trouve la Madone de Lorette du Caravage, peinte vers 1605. Elle a fait scandale : la Vierge y apparaît comme une simple femme du peuple, sur le pas d'une porte, et devant elle deux pèlerins pauvres sont agenouillés, avec les pieds nus et sales tournés vers le spectateur. Les fidèles de l'époque, eux, s'y sont reconnus. Plus loin, sur un pilier, le prophète Isaïe a été peint par Raphaël. Et près de l'entrée, la Madone de l'enfantement, une statue de Jacopo Sansovino, entourée d'ex-voto : les futures mamans romaines viennent la prier depuis des siècles. Enfin, l'église abrite le tombeau de sainte Monique, la mère de saint Augustin."}, {"id": "mausolee", "name": "Mausolée d'Auguste", "lat": 41.9055, "lon": 12.4765, "radius": 70, "text": "Ce grand cylindre de briques, c'est le mausolée d'Auguste, le premier empereur romain. Il l'a fait construire dès 28 avant Jésus-Christ, quand il n'avait qu'environ trente-cinq ans : avec près de quatre-vingt-dix mètres de diamètre, c'est le plus grand tombeau circulaire de l'Antiquité romaine. Il était couvert de terre et d'arbres, avec une statue d'Auguste au sommet. Les cendres de l'empereur y ont été déposées en l'an 14, avec celles d'une grande partie de sa famille. Ensuite, le monument a eu mille vies : forteresse de la famille Colonna au Moyen Âge, jardin, arène pour des combats de taureaux et des feux d'artifice, puis salle de concert, l'Augusteo, jusqu'en 1936. Mussolini, qui se voyait en nouvel Auguste, a fait raser le quartier autour pour l'isoler et a construit la place que vous voyez, dans le style monumental de l'époque fasciste. Après une longue restauration, le mausolée a rouvert au public en 2021."}, {"id": "arapacis", "name": "Ara Pacis", "lat": 41.90584, "lon": 12.47541, "radius": 45, "text": "Derrière les grandes vitres de ce bâtiment blanc se trouve l'Ara Pacis, l'autel de la Paix d'Auguste. Le Sénat l'a voté en 13 avant Jésus-Christ, quand Auguste est revenu victorieux de Gaule et d'Espagne, et il a été inauguré quatre ans plus tard. Approchez-vous des vitres : sur les côtés, on voit une procession avec la famille impériale, hommes, femmes et même des enfants qui tirent sur la toge de leurs parents. C'est un portrait de famille sculpté il y a plus de deux mille ans. L'autel a été retrouvé en morceaux, dispersés dans plusieurs musées, puis reconstitué ici en 1938. Le pavillon de verre est l'œuvre de l'architecte américain Richard Meier, en 2006 : c'était le premier bâtiment moderne construit dans le centre historique depuis des décennies, et il a fait polémique. En repartant par la via di Ripetta, souvenez-vous qu'il y avait ici un port sur le Tibre, le port de Ripetta, avec un bel escalier baroque, détruit à la fin du dix-neuvième siècle quand on a construit les grands quais."}];
+const OUTRO = {"id": "arrivee", "name": "Arrivée : Dal Bolognese", "lat": 41.90988, "lon": 12.47614, "radius": 45, "text": "Vous voici sur la piazza del Popolo, au restaurant Dal Bolognese, une institution romaine depuis plus de cinquante ans. Comme son nom l'indique, on y mange la cuisine de Bologne, en Émilie-Romagne : les tagliatelles au ragù, la vraie sauce bolognaise, les lasagnes, ou le bollito misto, un assortiment de viandes bouillies servi avec une sauce verte. Si vous avez une table en terrasse, profitez de la vue sur l'obélisque et sur les églises jumelles que vous avez vues hier soir. Merci de m'avoir écouté, bon appétit, et très bon anniversaire !"};
+const FOOD = [];
+const ALL = [...STOPS, OUTRO];
+const $ = id => document.getElementById(id);
+
+/* ---------- état ---------- */
+let played = new Set();
+try { played = new Set(JSON.parse(localStorage.getItem('rome3-played') || '[]')); } catch(e) {}
+const savePlayed = () => { try { localStorage.setItem('rome3-played', JSON.stringify([...played])); } catch(e) {} };
+let current = null, queue = [], lastPos = null, watchId = null, wakeLock = null, started = false;
+
+/* ---------- distance ---------- */
+function dist(a, b) {
+  const R = 6371000, r = Math.PI/180;
+  const dLat = (b.lat-a.lat)*r, dLon = (b.lon-a.lon)*r;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const fmt = m => m < 1000 ? Math.round(m/10)*10 + ' m' : (m/1000).toFixed(1).replace('.', ',') + ' km';
+
+/* ---------- carte ---------- */
+let map, userMarker, accCircle, pins = {};
+if (window.L) {
+  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, rotateControl: false, touchRotate: true, bearing: 0,
+    zoomSnap: 0, zoomDelta: 0.5, bounceAtZoomLimits: false });   /* pas de saut de zoom quand on relâche les doigts */
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+  }).addTo(map);
+  /* rendu du tracé : large marge + redessin continu pendant zoom / rotation au doigt */
+  window.routeRenderer = L.svg({ padding: 1 });
+  const line = L.polyline(TRACK, { renderer: routeRenderer, color: getComputedStyle(document.documentElement).getPropertyValue('--ria').trim() || '#1f6f6b', weight: 5, opacity: .85 }).addTo(map);
+  let rafPending = false;
+  /* pendant que les doigts sont sur l'écran : on recalcule le tracé à chaque image
+     à l'échelle et à l'angle courants, pour qu'il reste collé à la carte */
+  const redrawRoute = () => {
+    if (rafPending) return; rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; try { routeRenderer._reset(); } catch(e) { try { routeRenderer._update(); } catch(_) {} } });
+  };
+  map.on('zoom move rotate viewreset', redrawRoute);
+  map.fitBounds(line.getBounds(), { padding: [20, 20] });
+  STOPS.forEach((s, i) => {
+    const icon = L.divIcon({ className: '', html: `<div class="pin" id="pin-${s.id}">${i+1}</div>`, iconSize: [26,26], iconAnchor: [13,13] });
+    pins[s.id] = L.marker([s.lat, s.lon], { icon }).addTo(map).bindPopup(s.name);
+  });
+  FOOD.forEach(f => {
+    const icon = L.divIcon({ className: '', html: `<div class="pin food${f.kind === 'sight' ? ' sight' : ''}" id="pin-${f.id}">${f.kind === 'sight' ? 'i' : 'T'}</div>`, iconSize: [24,24], iconAnchor: [12,12] });
+    pins[f.id] = L.marker([f.lat, f.lon], { icon }).addTo(map).bindPopup(f.name + ' · ' + f.place);
+  });
+} else {
+  $('map').textContent = 'Carte indisponible (connexion ?). Les étapes et l’audio fonctionnent quand même.';
+  $('map').style.cssText += 'display:grid;place-items:center;padding:16px;color:var(--muted);text-align:center';
+}
+
+/* ---------- liste ---------- */
+function renderList() {
+  const ol = $('stops'); ol.innerHTML = '';
+  STOPS.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.className = 'stop-item' + (played.has(s.id) ? ' done' : '') + (current && current.id === s.id ? ' playing' : '');
+    const d = lastPos ? fmt(dist(lastPos, s)) : '';
+    li.innerHTML = `<span class="num">${i+1}</span><div style="min-width:0"><div class="stop-name"></div><div class="stop-meta">${played.has(s.id) ? 'Écouté' : ''}${played.has(s.id) && d ? ' · ' : ''}${d}</div></div>`;
+    li.querySelector('.stop-name').textContent = s.name;
+    const b = document.createElement('button');
+    const isPlaying = current && current.id === s.id;
+    b.textContent = isPlaying ? 'Arrêter' : 'Écouter';
+    b.onclick = () => isPlaying ? stopSpeech() : play(s, true);
+    li.appendChild(b); ol.appendChild(li);
+    const pin = document.getElementById('pin-' + s.id);
+    if (pin) pin.classList.toggle('done', played.has(s.id));
+  });
+  const fl = $('food'); fl.innerHTML = '';
+  FOOD.forEach(f => {
+    const li = document.createElement('li');
+    li.className = 'stop-item' + (played.has(f.id) ? ' done' : '') + (current && current.id === f.id ? ' playing' : '');
+    const d = lastPos ? fmt(dist(lastPos, f)) : '';
+    li.innerHTML = `<span class="num food${f.kind === 'sight' ? ' sight' : ''}">${f.kind === 'sight' ? 'i' : 'T'}</span><div style="min-width:0"><div class="stop-name"></div><div class="stop-meta"></div></div>`;
+    li.querySelector('.stop-name').textContent = f.name;
+    li.querySelector('.stop-meta').textContent = f.place + (d ? ' · ' + d : '');
+    const b = document.createElement('button');
+    const isPlaying = current && current.id === f.id;
+    b.textContent = isPlaying ? 'Arrêter' : 'Écouter';
+    b.onclick = () => isPlaying ? stopSpeech() : play(f, true);
+    li.appendChild(b); fl.appendChild(li);
+  });
+  try { updateAskLinks(); } catch(e) {}
+  const nxt = STOPS.find(s => !played.has(s.id));
+  if (!nxt) $('next').innerHTML = 'Toutes les étapes sont écoutées. Retour vers le point de départ.';
+  else $('next').innerHTML = `Prochaine étape : <b></b>${lastPos ? ' · <b>' + fmt(dist(lastPos, nxt)) + '</b>' : ''}`, $('next').querySelector('b').textContent = nxt.name;
+}
+
+/* ---------- voix ---------- */
+const synth = window.speechSynthesis;
+let voices = [];
+const NOVELTY = /eloquence|eddy|flo\b|grandma|grandpa|grand-m|grand-p|reed|rocko|sandy|shelley|bahh|bells|boing|bubbles|cellos|wobble|jester|organ|trinoids|whisper|zarvox|albert|bad news|good news|superstar|junior|ralph|kathy|fred/i;
+function quality(v) {
+  const id = (v.voiceURI || '') + ' ' + v.name;
+  if (/premium/i.test(id)) return 'premium';
+  if (/enhanced|amélior/i.test(id)) return 'améliorée';
+  return '';
+}
+function scoreVoice(v) {
+  const id = (v.voiceURI || '') + ' ' + v.name;
+  let s = 0;
+  if (/^fr[-_]FR/i.test(v.lang)) s += 20; else if (/^fr/i.test(v.lang)) s += 10;
+  const q = quality(v); if (q === 'premium') s += 40; else if (q) s += 30;
+  if (/neural|natural|online|google/i.test(id)) s += 15;
+  if (NOVELTY.test(id)) s -= 60;
+  return s;
+}
+const SYSTEM = '__system__';
+function loadVoices() {
+  if (!synth) return;
+  voices = synth.getVoices().filter(v => /^fr/i.test(v.lang)).sort((a,b) => scoreVoice(b) - scoreVoice(a));
+  const sel = $('voiceSel'); const prev = sel.value; sel.innerHTML = '';
+  const def = document.createElement('option'); def.value = SYSTEM; def.textContent = 'Voix choisie dans les réglages du téléphone'; sel.appendChild(def);
+  voices.forEach(v => { const o = document.createElement('option'); o.value = v.name; const q = quality(v); o.textContent = `${v.name}${q ? ' · ' + q : ''} (${v.lang})`; sel.appendChild(o); });
+  let saved = null; try { saved = localStorage.getItem('rome3-voice'); } catch(e) {}
+  if (saved && (saved === SYSTEM || voices.some(v => v.name === saved))) sel.value = saved;
+  else if (prev) sel.value = prev;
+  else sel.value = SYSTEM;
+}
+if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; }
+$('voiceSel').onchange = e => { try { localStorage.setItem('rome3-voice', e.target.value); } catch(_) {} };
+
+/* Prononciation : noms basques et espagnols réécrits pour la voix française (texte affiché inchangé) */
+const PHONETIC = [["Piazza Navona", "Piatsa Navona"], ["piazza del Popolo", "piatsa dél Popolo"], ["via di Ripetta", "via di Ripétta"], ["Ripetta", "Ripétta"], ["Pamphili", "Pammfili"], ["Río de la Plata", "Rio dé la Plata"], ["Borromini", "Borromini"], ["Jacopo Sansovino", "Yacopo Sannsovino"], ["Colonna", "Colonna"], ["Augusteo", "Aougoustéo"], ["Ara Pacis", "Ara Patchisse"], ["Richard Meier", "Ritchard Maïeur"], ["Dal Bolognese", "Dal Bolognézé"], ["tagliatelles", "talliatelles"], ["ragù", "ragou"], ["bollito misto", "bollito misto"], ["Caravage", "Caravage"]];
+const phonetic = t => PHONETIC.reduce((acc, [a, b]) => acc.split(a).join(b), t);
+function chunks(text) {
+  const parts = text.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+  const out = []; let buf = '';
+  for (const p of parts) { if ((buf + p).length > 220 && buf) { out.push(buf.trim()); buf = p; } else buf += p; }
+  if (buf.trim()) out.push(buf.trim());
+  return out;
+}
+let speakToken = 0;
+function speak(text, onEnd) {
+  if (!synth) { onEnd && onEnd(); return; }
+  synth.cancel();
+  const token = ++speakToken;
+  const list = chunks(phonetic(text));
+  const choice = $('voiceSel').value;
+  const voice = choice === SYSTEM ? null : (voices.find(v => v.name === choice) || null);
+  let i = 0;
+  const next = () => {
+    if (token !== speakToken) return;
+    if (i >= list.length) { onEnd && onEnd(); return; }
+    const u = new SpeechSynthesisUtterance(list[i++]);
+    if (voice) u.voice = voice;
+    u.lang = voice ? voice.lang : 'fr-FR';
+    u.rate = parseFloat($('rate').value) || 1;
+    u.onend = next; u.onerror = next;
+    synth.speak(u);
+  };
+  next();
+}
+function stopSpeech() {
+  speakToken++; if (synth) synth.cancel();
+  current = null; queue = [];
+  $('stopBtn').hidden = true; $('now').textContent = 'Voix arrêtée';
+  renderList();
+}
+function play(stop, manual) {
+  if (manual) queue = [];
+  const changed = !lastStop || lastStop.id !== stop.id;
+  current = stop; lastStop = stop; try { localStorage.setItem('rome3-last', stop.id); } catch(e) {}
+  if (changed) { try { $('qText').value = ''; $('info').hidden = true; } catch(e) {} }
+  played.add(stop.id); savePlayed();
+  $('now').textContent = stop.name; $('stopBtn').hidden = false;
+  if (pins[stop.id] && map) pins[stop.id].openPopup();
+  renderList();
+  speak(stop.text, () => {
+    current = null; $('stopBtn').hidden = true;
+    $('now').textContent = 'En route…';
+    renderList();
+    const n = queue.shift(); if (n && !played.has(n.id)) play(n);
+  });
+}
+
+/* ---------- géolocalisation ---------- */
+function onPos(p) {
+  const { latitude: lat, longitude: lon, accuracy } = p.coords;
+  lastPos = { lat, lon };
+  try { updateCourse(p); } catch(e) {}
+  $('gpsDot').className = 'dot ' + (accuracy <= 30 ? 'on' : 'warn');
+  $('gpsText').textContent = `GPS actif · précision ${Math.round(accuracy)} m`;
+  if (map) {
+    if (!userMarker) {
+      userMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: '<div class="user-dot"></div>', iconSize: [18,18], iconAnchor: [9,9] }), zIndexOffset: 1000 }).addTo(map);
+      accCircle = L.circle([lat, lon], { renderer: window.routeRenderer, radius: accuracy, color: '#2a7de1', weight: 1, fillOpacity: .08 }).addTo(map);
+    } else { userMarker.setLatLng([lat, lon]); accCircle.setLatLng([lat, lon]).setRadius(accuracy); }
+  }
+  if (accuracy <= 60) {
+    const visited = STOPS.filter(s => played.has(s.id)).length;
+    const foodOn = false;
+    const pool = [...ALL, ...FOOD].filter(s => !played.has(s.id) && (s !== OUTRO || visited >= 3) && (!FOOD.includes(s) || foodOn));
+    const hits = pool.map(s => ({ s, d: dist(lastPos, s) })).filter(x => x.d <= x.s.radius).sort((a,b) => a.d - b.d);
+    if (hits.length) {
+      const s = hits[0].s;
+      if (!current) play(s);
+      else if (current.id !== s.id && !queue.includes(s)) queue.push(s);
+    }
+  }
+  renderList();
+  try { if (aroundOpen) refreshAround(false); } catch(e) {}
+}
+function onErr(e) {
+  $('gpsDot').className = 'dot warn';
+  $('gpsText').textContent = e.code === 1
+    ? 'Localisation refusée · autorisez-la dans les réglages du navigateur, ou utilisez les boutons Écouter'
+    : 'Signal GPS faible · utilisez les boutons Écouter si besoin';
+}
+async function keepAwake() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+document.addEventListener('visibilitychange', () => { if (started && document.visibilityState === 'visible') keepAwake(); });
+
+$('startBtn').onclick = () => {
+  if (started) { $('startBtn').textContent = 'Visite en cours'; return; }
+  started = true;
+  $('startBtn').textContent = 'Visite en cours';
+  keepAwake();
+  if ('geolocation' in navigator) {
+    $('gpsText').textContent = 'Recherche du signal GPS…';
+    watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+  } else onErr({ code: 2 });
+  current = { id: 'intro', name: 'Introduction' };
+  $('now').textContent = 'Introduction'; $('stopBtn').hidden = false;
+  speak(INTRO, () => {
+    current = null; $('stopBtn').hidden = true; $('now').textContent = 'En route…'; renderList();
+    const n = queue.shift(); if (n && !played.has(n.id)) play(n);
+  });
+};
+$('stopBtn').onclick = stopSpeech;
+$('testBtn').onclick = () => speak('Bonjour, je serai votre guide aujourd’hui à Rome.');
+$('resetBtn').onclick = () => { $('confirmBox').hidden = false; $('resetBtn').hidden = true; $('confirmNo').focus(); };
+$('confirmNo').onclick = () => { $('confirmBox').hidden = true; $('resetBtn').hidden = false; };
+$('confirmYes').onclick = () => {
+  $('confirmBox').hidden = true; $('resetBtn').hidden = false;
+  stopSpeech(); played.clear(); savePlayed();
+  try { lastStop = null; localStorage.removeItem('rome3-last'); $('qText').value = ''; $('info').hidden = true; } catch(e) {}
+  if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+  watchId = null; started = false;
+  $('startBtn').textContent = 'Démarrer la visite';
+  $('now').textContent = 'Visite remise à zéro';
+  renderList();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+
+/* ---------- contexte : lieu en cours, dernier écouté ou le plus proche ---------- */
+let lastStop = null;
+const GENERAL = { id: 'general', name: 'Rome et ma balade à pied', text: INTRO };
+try { const lid = localStorage.getItem('rome3-last'); if (lid) lastStop = [...STOPS, ...FOOD, OUTRO].find(s => s.id === lid) || null; } catch(e) {}
+function contextStop() {
+  if (current && current.lat) return current;
+  if (lastStop) return lastStop;
+  return GENERAL;   // rien d'écouté depuis le début (ou après remise à zéro) : Rome en général
+}
+
+/* ---------- En savoir plus : Wikipédia ---------- */
+const WIKI = {"general": "Rome", "navona": "Piazza Navona", "agostino": "Basilique Sant'Agostino", "mausolee": "Mausolée d'Auguste", "arapacis": "Ara Pacis"};
+const WAPI = 'https://fr.wikipedia.org/w/api.php?format=json&origin=*&';
+async function wikiExtract(title) {
+  const r = await fetch(WAPI + 'action=query&prop=extracts&explaintext=1&exintro=1&redirects=1&titles=' + encodeURIComponent(title));
+  const j = await r.json(); const p = Object.values((j.query || {}).pages || {})[0];
+  if (!p || p.missing !== undefined || !p.extract || p.extract.length < 80) return null;
+  return { title: p.title, text: p.extract };
+}
+async function wikiSearch(q) {
+  const r = await fetch(WAPI + 'action=query&list=search&srlimit=1&srsearch=' + encodeURIComponent(q));
+  const j = await r.json(); const hit = ((j.query || {}).search || [])[0];
+  return hit ? hit.title : null;
+}
+function cleanForSpeech(t) {
+  return t.replace(/\([^()]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(/\s+([,.])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+}
+async function learnMore() {
+  const s = contextStop();
+  const info = $('info'); info.hidden = false; info.textContent = 'Recherche sur Wikipédia : ' + s.name + '…';
+  try {
+    let res = WIKI[s.id] ? await wikiExtract(WIKI[s.id]) : (String(s.id).startsWith('geo-') ? await wikiExtract(s.name) : null);
+    if (!res) { const t = await wikiSearch(s.name + ' Rome'); if (t) res = await wikiExtract(t); }
+    if (!res) { info.textContent = 'Pas d’article Wikipédia trouvé pour ' + s.name + '.'; return; }
+    let text = cleanForSpeech(res.text);
+    if (text.length > 2000) text = text.slice(0, 2000).replace(/[^.]*$/, '');
+    info.innerHTML = ''; const b = document.createElement('b'); b.textContent = res.title; info.appendChild(b);
+    info.appendChild(document.createTextNode(' · Wikipédia — '));
+    const a = document.createElement('a'); a.href = 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(res.title.replace(/ /g, '_'));
+    a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'ouvrir l’article'; info.appendChild(a);
+    current = { id: 'wiki-' + s.id, name: res.title + ' (Wikipédia)' };
+    $('now').textContent = current.name; $('stopBtn').hidden = false;
+    speak('Selon Wikipédia. ' + text, () => { current = null; $('stopBtn').hidden = true; $('now').textContent = 'En route…'; renderList(); });
+  } catch (e) {
+    info.textContent = 'Wikipédia ne répond pas (connexion ?). Réessayez dans un instant.';
+  }
+}
+$('moreBtn').onclick = learnMore;
+
+/* ---------- Poser une question : ouvre votre IA avec le contexte ---------- */
+function buildPrompt() {
+  const s = contextStop(); const q = $('qText').value.trim() || 'Raconte-moi quelque chose d’intéressant sur ce lieu.';
+  const ctx = (s.text || '').slice(0, 300);
+  const lieu = s === GENERAL ? 'Je fais une balade à pied dans Rome (place Navone, Saint-Augustin, mausolée d’Auguste, Ara Pacis, piazza del Popolo).' : `Je visite Rome à pied et je suis devant : ${s.name}.`;
+  return `${lieu} Contexte déjà entendu dans mon audioguide : « ${ctx}… » Ma question : ${q} Réponds en français, de façon précise et concise (quelques phrases), en privilégiant les faits historiques vérifiables.`;
+}
+function updateAskLinks() {
+  const p = encodeURIComponent(buildPrompt());
+  $('askClaude').href = 'https://claude.ai/new?q=' + p;
+  $('askGpt').href = 'https://chatgpt.com/?q=' + p;
+  $('askGoogle').href = 'https://www.google.com/search?udm=50&q=' + p;
+  $('askCtx').textContent = 'Question sur : ' + contextStop().name + (lastStop && contextStop() === lastStop ? ' (dernier lieu écouté)' : '');
+}
+function setAsk(open) {
+  $('askBox').hidden = !open;
+  $('askBtn').textContent = open ? 'Fermer la question' : 'Poser une question';
+  if (open) { updateAskLinks(); $('askBox').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+}
+$('askBtn').onclick = () => setAsk($('askBox').hidden);
+$('askClose').onclick = () => setAsk(false);
+$('qText').addEventListener('input', updateAskLinks);
+['askClaude','askGpt','askGoogle'].forEach(id => $(id).addEventListener('click', () => {
+  updateAskLinks();
+  setTimeout(() => { $('qText').value = ''; updateAskLinks(); }, 400);   // champ vidé après l'envoi
+}));
+$('qClear').onclick = () => { $('qText').value = ''; updateAskLinks(); $('qText').focus(); };
+
+/* ---------- Orienter la carte dans le sens de la marche ---------- */
+let orient = false, compass = null, lastBearingAt = 0, course = null, prevFix = null;
+function bearingTo(a, b) {
+  const r = Math.PI/180, y = Math.sin((b.lon-a.lon)*r)*Math.cos(b.lat*r);
+  const x = Math.cos(a.lat*r)*Math.sin(b.lat*r) - Math.sin(a.lat*r)*Math.cos(b.lat*r)*Math.cos((b.lon-a.lon)*r);
+  return (Math.atan2(y, x)/r + 360) % 360;
+}
+function applyHeading() {
+  if (!orient || !map || !map.setBearing) return;
+  const h = course !== null ? course : compass;   // sens de la marche si on avance, sinon boussole
+  if (h === null) return;
+  const now = Date.now(); if (now - lastBearingAt < 250) return; lastBearingAt = now;
+  map.setBearing((360 - h) % 360);
+  if (lastPos) map.panTo([lastPos.lat, lastPos.lon], { animate: false });
+}
+function onOrientation(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h === null) return;
+  compass = h; applyHeading();
+}
+function updateCourse(p) {
+  const { latitude: lat, longitude: lon, heading, speed } = p.coords;
+  if (typeof heading === 'number' && !isNaN(heading) && speed > 0.6) course = heading;
+  else if (prevFix && dist(prevFix, { lat, lon }) > 8) { course = bearingTo(prevFix, { lat, lon }); }
+  else if (speed !== null && speed < 0.3) course = null;
+  if (!prevFix || dist(prevFix, { lat, lon }) > 8) prevFix = { lat, lon };
+  applyHeading();
+}
+async function toggleOrient() {
+  if (!map || !map.setBearing) { $('orientBtn').textContent = 'Rotation indisponible'; return; }
+  orient = !orient;
+  $('orientBtn').setAttribute('aria-pressed', String(orient));
+  $('orientBtn').textContent = orient ? 'Carte orientée' : 'Orienter la carte';
+  if (orient) {
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') compass = null;
+      }
+    } catch (e) {}
+    try { map.touchRotate.disable(); } catch(e) {}
+    window.addEventListener('deviceorientation', onOrientation);
+    window.addEventListener('deviceorientationabsolute', onOrientation);
+    if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 17));
+    applyHeading();
+  } else {
+    window.removeEventListener('deviceorientation', onOrientation);
+    window.removeEventListener('deviceorientationabsolute', onOrientation);
+    map.setBearing(0);
+    try { map.touchRotate.enable(); } catch(e) {}
+  }
+}
+$('orientBtn').onclick = toggleOrient;
+$('northBtn').onclick = () => { if (orient) toggleOrient(); else if (map && map.setBearing) map.setBearing(0); };
+
+/* ---------- Autour de moi / Je vise (lieux Wikipédia géolocalisés) ---------- */
+const AROUND_R = 300, VISE_R = 250, VISE_HALF = 25, VISE_NEAR = 40;
+let aroundOpen = false, vise = false, viseHeading = null, aroundItems = [], aroundFetchedAt = 0, aroundFetchPos = null, aroundRenderAt = 0;
+let aroundLayer = null, coneLayer = null, viseTimer = null;
+function relAngle(b, h) { return ((b - h + 540) % 360) - 180; }
+function cardinal(b) { return ['vers le nord','vers le nord-est','vers l’est','vers le sud-est','vers le sud','vers le sud-ouest','vers l’ouest','vers le nord-ouest'][Math.round(b / 45) % 8]; }
+function destPoint(p, brg, d) {
+  const R = 6371000, r = Math.PI/180, la = p.lat*r, lo = p.lon*r, t = brg*r, dr = d/R;
+  const la2 = Math.asin(Math.sin(la)*Math.cos(dr) + Math.cos(la)*Math.sin(dr)*Math.cos(t));
+  const lo2 = lo + Math.atan2(Math.sin(t)*Math.sin(dr)*Math.cos(la), Math.cos(dr) - Math.sin(la)*Math.sin(la2));
+  return [la2/r, lo2/r];
+}
+function aroundPosition() {
+  return new Promise((res, rej) => {
+    if (lastPos) return res(lastPos);
+    if (!navigator.geolocation) return rej({ code: 2 });
+    navigator.geolocation.getCurrentPosition(p => { lastPos = { lat: p.coords.latitude, lon: p.coords.longitude }; res(lastPos); },
+      rej, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+  });
+}
+async function fetchAround(pos) {
+  const ctl = ('AbortController' in window) ? new AbortController() : null;
+  const tm = ctl ? setTimeout(() => ctl.abort(), 12000) : null;
+  let r;
+  try { r = await fetch(WAPI + 'action=query&list=geosearch&gsradius=500&gslimit=50&gscoord=' + pos.lat.toFixed(5) + '%7C' + pos.lon.toFixed(5), ctl ? { signal: ctl.signal } : {}); }
+  finally { if (tm) clearTimeout(tm); }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  aroundItems = ((j.query || {}).geosearch || []).map(g => ({ id: 'geo-' + g.pageid, title: g.title, lat: g.lat, lon: g.lon }));
+  aroundFetchedAt = Date.now(); aroundFetchPos = { lat: pos.lat, lon: pos.lon };
+}
+async function refreshAround(force) {
+  if (!aroundOpen) return;
+  const st = $('aroundStatus');
+  try {
+    const pos = await aroundPosition();
+    if (force || !aroundFetchPos || dist(aroundFetchPos, pos) > 80 || Date.now() - aroundFetchedAt > 180000) {
+      st.textContent = 'Recherche des lieux autour de vous (Wikipédia)…';
+      await fetchAround(pos);
+    }
+    renderAround();
+  } catch (e) {
+    console.log('[around]', e && (e.message || e.code));
+    st.textContent = e && e.code === 1
+      ? 'Localisation refusée : autorisez-la dans les réglages du navigateur pour utiliser « Autour de moi ».'
+      : (e && e.code === 3 ? 'Position GPS introuvable pour l’instant (délai dépassé). Appuyez sur Actualiser.' : 'Impossible de charger les lieux (connexion ou Wikipédia). Appuyez sur Actualiser.');
+  }
+}
+function setContextFromAround(it, text) {
+  const changed = !lastStop || lastStop.id !== it.id;
+  lastStop = { id: it.id, name: it.title, text: text || (lastStop && lastStop.id === it.id ? lastStop.text : ''), lat: it.lat, lon: it.lon };
+  if (changed) { $('qText').value = ''; }
+  updateAskLinks();
+}
+async function listenAround(it) {
+  const info = $('info'); info.hidden = false; info.textContent = 'Recherche sur Wikipédia : ' + it.title + '…';
+  try {
+    const res = await wikiExtract(it.title);
+    if (!res) { info.textContent = 'Pas de résumé Wikipédia disponible pour ' + it.title + '.'; setContextFromAround(it, ''); return; }
+    let text = cleanForSpeech(res.text);
+    if (text.length > 1800) text = text.slice(0, 1800).replace(/[^.]*$/, '');
+    setContextFromAround(it, text);
+    info.innerHTML = ''; const b = document.createElement('b'); b.textContent = res.title; info.appendChild(b);
+    info.appendChild(document.createTextNode(' · Wikipédia — '));
+    const a = document.createElement('a'); a.href = 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(res.title.replace(/ /g, '_'));
+    a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'ouvrir l’article'; info.appendChild(a);
+    current = { id: it.id, name: res.title, text, lat: it.lat, lon: it.lon };
+    $('now').textContent = res.title + ' (autour de moi)'; $('stopBtn').hidden = false;
+    speak(res.title + '. ' + text, () => { current = null; $('stopBtn').hidden = true; $('now').textContent = 'En route…'; renderList(); });
+  } catch (e) {
+    info.textContent = 'Wikipédia ne répond pas (connexion ?). Réessayez dans un instant.';
+  }
+}
+function drawAroundOnMap(list) {
+  if (!map) return;
+  if (!aroundLayer) aroundLayer = L.layerGroup().addTo(map);
+  aroundLayer.clearLayers();
+  list.forEach((x, i) => {
+    L.circleMarker([x.it.lat, x.it.lon], { renderer: window.routeRenderer, radius: (vise && i === 0) ? 9 : 6, color: '#fff', weight: 2,
+      fillColor: '#d9822b', fillOpacity: 1 }).bindPopup(x.it.title).addTo(aroundLayer);
+  });
+  if (coneLayer) { map.removeLayer(coneLayer); coneLayer = null; }
+  if (vise && viseHeading !== null && lastPos) {
+    const pts = [[lastPos.lat, lastPos.lon]];
+    for (let a = -VISE_HALF; a <= VISE_HALF; a += 5) pts.push(destPoint(lastPos, viseHeading + a, VISE_R));
+    coneLayer = L.polygon(pts, { renderer: window.routeRenderer, color: '#d9822b', weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
+  }
+}
+function renderAround() {
+  if (!aroundOpen) return;
+  aroundRenderAt = Date.now();
+  const st = $('aroundStatus'), ol = $('aroundList');
+  if (!lastPos) { st.textContent = 'En attente de votre position…'; return; }
+  const h = vise ? viseHeading : null;
+  let list = aroundItems.map(it => ({ it, d: dist(lastPos, it), b: bearingTo(lastPos, it) }));
+  if (h !== null) {
+    list = list.filter(x => x.d <= VISE_NEAR || (x.d <= VISE_R && Math.abs(relAngle(x.b, h)) <= VISE_HALF))
+               .map(x => ({ ...x, off: x.d <= VISE_NEAR ? 0 : Math.abs(relAngle(x.b, h)) }))
+               .sort((a, b) => (a.off - b.off) || (a.d - b.d));
+  } else {
+    list = list.filter(x => x.d <= AROUND_R).sort((a, b) => a.d - b.d);
+  }
+  list = list.slice(0, 12);
+  if (vise && h === null) st.textContent = 'Boussole en attente : bougez un peu le téléphone. En attendant, voici tout ce qui est autour de vous.';
+  else if (!list.length) st.textContent = h !== null ? 'Rien de répertorié dans cette direction jusqu’à ' + VISE_R + ' m. Tournez-vous un peu.' : 'Aucun lieu répertorié sur Wikipédia à moins de ' + AROUND_R + ' m.';
+  else st.textContent = h !== null ? 'Dans la direction visée (jusqu’à ' + VISE_R + ' m) : le plus dans l’axe en premier.' : list.length + (list.length > 1 ? ' lieux' : ' lieu') + ' à moins de ' + AROUND_R + ' m, du plus proche au plus loin.';
+  ol.innerHTML = '';
+  list.forEach((x, i) => {
+    const li = document.createElement('li');
+    li.className = 'stop-item' + (h !== null && i === 0 ? ' playing' : '');
+    const rot = h !== null ? relAngle(x.b, h) : x.b;
+    li.innerHTML = '<span class="arrow" aria-hidden="true">↑</span><div style="min-width:0"><div class="stop-name"></div><div class="stop-meta"></div></div><div class="around-btns"></div>';
+    li.querySelector('.arrow').style.transform = 'rotate(' + Math.round(rot) + 'deg)';
+    li.querySelector('.stop-name').textContent = x.it.title;
+    li.querySelector('.stop-meta').textContent = fmt(x.d) + (h !== null ? (x.d <= VISE_NEAR ? ' · tout près' : ' · ' + (Math.abs(relAngle(x.b, h)) < 8 ? 'droit devant' : relAngle(x.b, h) < 0 ? 'un peu à gauche' : 'un peu à droite')) : ' · ' + cardinal(x.b));
+    const bt = li.querySelector('.around-btns');
+    const b1 = document.createElement('button'); b1.textContent = 'Écouter'; b1.onclick = () => listenAround(x.it); bt.appendChild(b1);
+    const a = document.createElement('a'); a.className = 'gbtn'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Google IA';
+    a.href = 'https://www.google.com/search?udm=50&q=' + encodeURIComponent('Je visite Rome à pied et je suis à environ ' + Math.round(x.d) + ' mètres de : ' + x.it.title + '. Qu’est-ce que c’est et qu’y a-t-il d’intéressant à savoir (histoire, architecture, anecdotes) ? Réponds en français, de façon précise et concise, en privilégiant les faits vérifiables.');
+    a.addEventListener('click', () => setContextFromAround(x.it, null));
+    bt.appendChild(a);
+    ol.appendChild(li);
+  });
+  drawAroundOnMap(list);
+}
+function onViseOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h === null) return;
+  const so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : 0;
+  const first = viseHeading === null;
+  viseHeading = (h + so) % 360;
+  if (first || Date.now() - aroundRenderAt > 300) renderAround();
+  else if (!viseTimer) viseTimer = setTimeout(() => { viseTimer = null; renderAround(); }, 320);   // dernière position toujours affichée
+}
+async function toggleVise() {
+  vise = !vise;
+  $('viseBtn').setAttribute('aria-pressed', String(vise));
+  $('viseBtn').textContent = vise ? 'Je vise : activé' : 'Je vise';
+  if (vise) {
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') { $('aroundStatus').textContent = 'Accès à la boussole refusé : le mode « Je vise » ne peut pas fonctionner.'; }
+      }
+    } catch (e) {}
+    window.addEventListener('deviceorientation', onViseOrient);
+    window.addEventListener('deviceorientationabsolute', onViseOrient);
+  } else {
+    window.removeEventListener('deviceorientation', onViseOrient);
+    window.removeEventListener('deviceorientationabsolute', onViseOrient);
+    viseHeading = null;
+  }
+  renderAround();
+}
+function setAround(open) {
+  aroundOpen = open;
+  $('aroundBox').hidden = !open;
+  $('aroundBtn').textContent = open ? 'Fermer Autour de moi' : 'Autour de moi';
+  if (open) { $('askBox').hidden = true; $('aroundStatus').textContent = 'Recherche de votre position…'; refreshAround(true); setTimeout(() => $('aroundBox').scrollIntoView({ block: 'start', behavior: 'smooth' }), 50); }
+  else {
+    if (vise) toggleVise();
+    if (aroundLayer) aroundLayer.clearLayers();
+    if (coneLayer && map) { map.removeLayer(coneLayer); coneLayer = null; }
+  }
+}
+$('aroundBtn').onclick = () => setAround($('aroundBox').hidden);
+$('aroundClose').onclick = () => setAround(false);
+$('aroundRefresh').onclick = () => refreshAround(true);
+$('viseBtn').onclick = toggleVise;
+
+renderList();
+</script>
+</body>
+</html>
