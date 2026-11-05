@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="theme-color" content="#1d2a2c">
+<title>Madrid à pied · Cava Baja → Palais royal → Gran Vía</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+/* Layout: carte en haut, lecteur collant, liste des étapes en dessous */
+:root{
+  --bg:#f3f4f2; --surface:#ffffff; --fg:#1b2224; --muted:#5d686b; --line:#d9dddb;
+  --ria:#1f6f6b; --ria-soft:#e1efed; --red:#b3262e; --titan:#8a9599;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121819; --surface:#1b2325; --fg:#e8eceb; --muted:#9aa5a7; --line:#2c3638;
+  --ria:#4fb3ab; --ria-soft:#1d3433; --red:#e0565d; --titan:#a7b1b4; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--sans);-webkit-text-size-adjust:100%;
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+#map{height:42vh;min-height:260px;width:100%;background:var(--line)}
+.mapwrap{position:relative}
+.map-btn{position:absolute;right:12px;bottom:12px;z-index:800;background:var(--surface);color:var(--fg);
+  border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.2);padding:10px 14px;font-size:14px}
+.map-btn.north{right:auto;left:12px;width:44px;padding:10px 0;font-weight:800}
+.map-btn[aria-pressed="true"]{background:var(--ria);color:#fff;border-color:var(--ria)}
+[hidden]{display:none!important}
+.ask{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:4px}
+.ask textarea{width:100%;min-height:70px;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);resize:vertical}
+.ask .links{display:flex;gap:8px;flex-wrap:wrap}
+.ask a{flex:1;min-width:90px;text-align:center;text-decoration:none;font-weight:600;padding:11px 12px;border-radius:10px;background:var(--ria);color:#fff}
+.ask a.main{font-size:17px;padding:14px}
+.ask .alt{font-size:13px;color:var(--muted)}
+.ask .alt a{display:inline;flex:none;min-width:0;padding:0;background:none;color:var(--ria);text-decoration:underline}
+.ask .ctx{font-size:13px;color:var(--muted)}
+.info{font-size:14px;color:var(--muted);background:var(--ria-soft);border-radius:10px;padding:10px 12px;max-height:9em;overflow:auto}
+.info a{color:var(--ria)}
+.extras{display:grid;gap:10px;padding-block:10px 0}
+.around .stop-item{grid-template-columns:30px 1fr auto}
+.arrow{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;font-weight:800;color:#fff;background:#d9822b;transition:transform .25s}
+.around-btns{display:flex;flex-direction:column;gap:6px}
+.around-btns a.gbtn{flex:none;min-width:0;padding:8px 12px;font-size:14px;text-align:center}
+#viseBtn[aria-pressed="true"]{background:#d9822b;color:#fff}
+.extras:empty{display:none}
+.wrap{padding-inline:16px;max-width:680px;margin:0 auto}
+.player{position:sticky;top:0;z-index:500;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:12px 16px calc(12px);padding-top:calc(12px + env(safe-area-inset-top,0px))}
+.player-inner{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--titan);flex:none}
+.dot.on{background:var(--ria);box-shadow:0 0 0 4px var(--ria-soft)}
+.dot.warn{background:var(--red)}
+.now{font-weight:650;font-size:17px;line-height:1.3;text-wrap:balance}
+.next{font-size:14px;color:var(--muted)}
+.next b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;border:0;border-radius:10px;padding:11px 16px;cursor:pointer;
+  background:var(--ria-soft);color:var(--ria);font-weight:600}
+button.primary{background:var(--ria);color:#fff;flex:1;font-size:17px;padding:14px}
+button.stop{background:transparent;color:var(--red);border:1px solid var(--line)}
+button:focus-visible{outline:3px solid var(--ria);outline-offset:2px}
+h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
+ol.stops{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.stop-item{background:var(--surface);padding:12px 14px;display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center}
+.num{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;
+  background:var(--ria-soft);color:var(--ria);font-variant-numeric:tabular-nums}
+.stop-item.done .num{background:var(--ria);color:#fff}
+.stop-item.playing{background:var(--ria-soft)}
+.stop-name{font-weight:600;min-width:0}
+.stop-meta{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stop-item button{padding:8px 12px;font-size:14px}
+.settings{display:grid;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+label{font-size:14px;color:var(--muted);display:grid;gap:6px}
+select,input[type=range]{width:100%;font:inherit}
+select{padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.confirm{display:grid;gap:10px;padding:12px;border-radius:10px;background:var(--ria-soft)}
+.confirm p{margin:0;font-size:15px}
+button.danger{background:var(--red);color:#fff}
+.note{font-size:13px;color:var(--muted);margin:14px 0 32px}
+.user-dot{width:18px;height:18px;border-radius:50%;background:#2a7de1;border:3px solid #fff;box-shadow:0 0 0 2px rgba(42,125,225,.35)}
+.user-loc{position:relative;width:96px;height:96px;pointer-events:none}
+.user-loc .user-dot{position:absolute;left:36px;top:36px;box-sizing:border-box;width:24px;height:24px}
+.user-cone{position:absolute;inset:0;transform-origin:50% 50%;display:none}
+.user-loc.has-heading .user-cone{display:block}
+.pin{width:26px;height:26px;border-radius:50%;background:var(--ria);color:#fff;font:700 12px/26px var(--sans);text-align:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.pin.done{background:var(--titan)}
+.pin.food{background:var(--red);width:24px;height:24px;line-height:24px;border-radius:6px}
+.num.food{background:var(--red);color:#fff;border-radius:7px}
+.pin.sight,.num.sight{background:var(--ria);font-style:italic}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="mapwrap"><div id="map" role="img" aria-label="Carte du parcours"></div>
+<button id="orientBtn" class="map-btn" aria-pressed="false">Orienter la carte</button>
+<button id="northBtn" class="map-btn north" aria-label="Remettre le nord en haut">N</button></div>
+
+<div class="player">
+  <div class="player-inner">
+    <div class="status"><span class="dot" id="gpsDot"></span><span id="gpsText">GPS inactif · appuyez sur Démarrer</span></div>
+    <div class="now" id="now">Prêt pour la balade</div>
+    <div class="next" id="next"></div>
+    <div class="next" id="prog" hidden></div>
+    <div class="row">
+      <button class="primary" id="startBtn">Démarrer la visite</button>
+      <button class="stop" id="stopBtn" hidden>Arrêter la voix</button>
+    </div>
+    <div class="row">
+      <button id="moreBtn">En savoir plus</button>
+      <button id="askBtn">Poser une question</button>
+      <button id="aroundBtn">Autour de moi</button>
+    </div>
+  </div>
+</div>
+
+<section class="wrap extras">
+    <div class="info" id="info" hidden></div>
+    <div class="ask" id="askBox" hidden>
+      <div class="ctx" id="askCtx"></div>
+      <label for="qText">Votre question (touchez le micro du clavier pour dicter), puis « Demander » : Google répond aussitôt
+        <textarea id="qText" placeholder="Ex. : qui a construit ce bâtiment ?"></textarea>
+      </label>
+      <div class="row">
+        <button id="qClear" class="stop">Effacer la question</button>
+        <button id="askClose" class="stop">Fermer</button>
+      </div>
+      <div class="links">
+        <a id="askGoogle" class="main" target="_blank" rel="noopener">Demander à Google IA</a>
+      </div>
+      <div class="alt">Autres IA : <a id="askGpt" target="_blank" rel="noopener">ChatGPT</a> · <a id="askClaude" target="_blank" rel="noopener">Claude</a></div>
+    </div>
+    <div class="ask around" id="aroundBox" hidden>
+      <div class="row">
+        <button id="viseBtn" aria-pressed="false">Je vise</button>
+        <button id="aroundRefresh">Actualiser</button>
+        <button id="aroundClose" class="stop">Fermer</button>
+      </div>
+      <div class="ctx" id="aroundStatus"></div>
+      <ol class="stops" id="aroundList"></ol>
+      <div class="alt">Lieux répertoriés sur Wikipédia autour de votre position. Mode « Je vise » : tenez le téléphone à plat, le haut pointé vers ce qui vous intéresse.</div>
+    </div>
+</section>
+
+<main class="wrap">
+  <h2>Étapes</h2>
+  <ol class="stops" id="stops"></ol>
+
+  <h2 id="foodTitle" hidden>Sur le retour</h2>
+  <ol class="stops" id="food"></ol>
+
+  <h2>Voix</h2>
+  <div class="settings">
+    <label for="voiceSel">Voix française
+      <select id="voiceSel"></select>
+    </label>
+    <label for="rate">Vitesse de lecture
+      <input type="range" id="rate" min="0.8" max="1.2" step="0.05" value="1">
+    </label>
+    <div class="row">
+      <button id="testBtn">Tester la voix</button>
+    </div>
+  </div>
+  <h2>Visite</h2>
+  <div class="settings">
+    <button id="gpxBtn">Télécharger le GPX (montre)</button>
+    <button id="resetBtn" class="stop">Recommencer la visite à zéro</button>
+    <div id="confirmBox" class="confirm" hidden role="alertdialog" aria-labelledby="confirmTitle">
+      <p id="confirmTitle"><b>Êtes-vous sûr de vouloir recommencer la visite à partir de zéro ?</b><br>Toutes les étapes seront marquées comme non écoutées et l'introduction sera relancée.</p>
+      <div class="row">
+        <button id="confirmYes" class="danger">Oui, recommencer</button>
+        <button id="confirmNo">Annuler</button>
+      </div>
+    </div>
+  </div>
+  <p class="note">Gardez cette page ouverte et l'écran allumé pendant la balade : le téléphone ne transmet plus la position quand il est verrouillé. Si une description ne se déclenche pas, appuyez sur « Écouter ». Pour une voix plus naturelle sur iPhone : Réglages › Accessibilité › Contenu énoncé › Voix › Français, puis téléchargez une voix « améliorée » ou « premium ».</p>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+<script>
+const WAYPOINTS = [[40.41235, -3.70466], [40.41253, -3.70901], [40.41551, -3.7074], [40.41538, -3.70897], [40.4152, -3.71054], [40.41565, -3.71455], [40.417, -3.7144], [40.41864, -3.7121], [40.42033, -3.714], [40.42361, -3.71324], [40.42402, -3.71777], [40.41991, -3.70591], [40.41674, -3.70694], [40.41695, -3.70353], [40.41887, -3.69732], [40.41985, -3.70161]];
+let TRACK = WAYPOINTS.slice();   // tracé provisoire (lignes droites) remplacé par la trace piétonne réelle dès qu'elle est chargée
+const INTRO = "Bonjour, et bienvenue à Madrid ! Avant tout, l'itinéraire : prenez le métro à la station Bilbao, ligne 1, direction Valdecarros, et descendez quatre stations plus loin, à Tirso de Molina. De là, je vous guide à pied : déjeuner dans la Cava Baja, puis la plaza Mayor, le palais royal, le temple de Debod, la Gran Vía, et le chocolat aux churros. Retour en métro depuis la station Gran Vía, vers cinq heures et demie. Environ six kilomètres à pied en tout. Un mot d'histoire maintenant. Madrid est née au neuvième siècle, quand l'émir de Cordoue, Mohammed premier, fait construire une forteresse au-dessus de la rivière Manzanares, pour surveiller la route de Tolède. Les Arabes l'appellent Mayrit. En 1085, le roi de Castille Alphonse six s'en empare. Pendant des siècles, ce n'est qu'une petite ville, où la cour séjourne de temps en temps. Tout change en 1561 : le roi Philippe deux y installe définitivement sa cour. Madrid devient capitale, presque par hasard, parce qu'elle est au centre de la péninsule. Le vieux centre que vous allez voir aujourd'hui s'appelle d'ailleurs le Madrid des Habsbourg, les Austrias, comme disent les Madrilènes. Au dix-huitième siècle, les Bourbons, venus de France, construisent le palais royal, et Charles trois, surnommé le meilleur maire de Madrid, embellit la ville. Enfin, au vingtième siècle, la Gran Vía fait entrer Madrid dans la modernité. Gardez la page ouverte et l'écran allumé : je vous parlerai à chaque étape. Si je reste silencieux, appuyez sur Écouter. Bonne balade !";
+const STOPS = [{"id": "cava", "name": "Cava Baja · déjeuner", "lat": 40.41253, "lon": -3.70901, "radius": 70, "text": "Vous voici dans la Cava Baja, la rue des tavernes, idéale pour déjeuner. Son nom vient de la cava, le fossé creusé au pied du rempart médiéval de Madrid : la rue suit exactement le tracé de cette ancienne muraille, et c'est pour cela qu'elle est légèrement courbe. Ce rempart abattu, on construit ici, à partir du dix-septième siècle, des auberges, des posadas, pour les paysans qui venaient vendre leurs produits au marché de la plaza Mayor, avec leurs charrettes et leurs mules. Il en reste de beaux exemples, comme la Posada de la Villa ou la Posada del León de Oro. Aujourd'hui, c'est l'un des meilleurs endroits de la ville pour les tapas. À goûter absolument : les huevos rotos, des œufs au plat cassés sur des frites, spécialité de la célèbre Casa Lucio, dans cette rue ; les croquetas au jambon ; la tortilla de patatas ; les gambas al ajillo, crevettes à l'ail ; et, pour les plus courageux, les callos a la madrileña, les tripes à la madrilène. Bon appétit !"}, {"id": "mayor", "name": "Plaza Mayor", "lat": 40.41551, "lon": -3.7074, "radius": 60, "text": "Vous entrez sur la plaza Mayor, le cœur du vieux Madrid. Au Moyen Âge, il y avait ici, hors des murs, une grande place de marché, la plaza del Arrabal. Le roi Philippe trois en fait une vraie place royale : l'architecte Juan Gómez de Mora l'achève en 1619. Elle a brûlé trois fois, la dernière en 1790, et c'est l'architecte Juan de Villanueva qui l'a reconstruite telle que vous la voyez, entièrement fermée, avec ses arcades et ses balcons. Pendant deux siècles, elle a servi de théâtre à toute la vie de la ville : marchés, courses de taureaux, fêtes royales, canonisations, et aussi les autodafés de l'Inquisition. Au centre, la statue équestre de Philippe trois a été commencée par Jean de Bologne et terminée par Pietro Tacca en 1616 ; elle n'a été installée ici qu'en 1848. Regardez le bâtiment aux façades peintes : c'est la Casa de la Panadería, l'ancienne boulangerie qui fixait le prix du pain. Sous les arcades, on vend le bocadillo de calamares, le sandwich aux calamars frits, en-cas typique des Madrilènes. Vous êtes probablement arrivés par l'arco de Cuchilleros, l'arche des couteliers, avec son grand escalier."}, {"id": "miguel", "name": "Mercado de San Miguel", "lat": 40.41538, "lon": -3.70897, "radius": 45, "text": "Voici le marché de San Miguel, avec sa belle structure de fer et de verre. Il occupe l'emplacement d'une église, San Miguel de los Octoes, démolie en 1809 sous Joseph Bonaparte, le frère de Napoléon, alors roi d'Espagne. Joseph aimait tant ouvrir des places en démolissant des bâtiments que les Madrilènes l'avaient surnommé Pepe Plazuelas, Joseph les Placettes. Pendant des décennies, il y a eu ici un marché en plein air. La halle métallique actuelle, inspirée des Halles de Paris, a été inaugurée en 1916. Après une période de déclin, elle a été rénovée et a rouvert en 2009 sous la forme d'un marché gastronomique : on y déguste huîtres, jambon, olives, vermouth, debout autour de petits comptoirs. C'est l'un des lieux les plus fréquentés de la ville, et c'est assez cher, mais l'architecture vaut le coup d'œil, même de l'extérieur."}, {"id": "villa", "name": "Plaza de la Villa", "lat": 40.4152, "lon": -3.71054, "radius": 45, "text": "Vous voici sur la plaza de la Villa, l'une des plus anciennes places de Madrid, déjà le centre politique de la ville au Moyen Âge. Trois époques s'y font face. La tour et la maison de los Lujanes, du quinzième siècle, avec leur porte gothique, comptent parmi les plus vieux bâtiments civils de Madrid. La Casa de Cisneros, du seizième siècle, a été construite pour un neveu du célèbre cardinal Cisneros. Et la Casa de la Villa, avec ses tours à flèches d'ardoise, typiques du style des Habsbourg, a été dessinée au dix-septième siècle par Juan Gómez de Mora, le même architecte que la plaza Mayor. Elle a été l'hôtel de ville de Madrid pendant plus de trois siècles, jusqu'au déménagement de la mairie au palais de Cibeles, en 2007. Au centre, la statue d'Álvaro de Bazán, réalisée par Mariano Benlliure en 1891 : c'est l'amiral qui commandait une partie de la flotte espagnole à la bataille de Lépante, en 1571."}, {"id": "almudena", "name": "Cathédrale de l'Almudena", "lat": 40.41565, "lon": -3.71455, "radius": 55, "text": "Voici la cathédrale de l'Almudena. Étonnamment, Madrid n'a eu sa propre cathédrale que très tard : la ville dépendait de l'archevêché de Tolède, et le diocèse de Madrid n'a été créé qu'en 1885. La première pierre avait été posée deux ans plus tôt, en 1883, pour une grande église néogothique. Mais les travaux ont traîné pendant plus d'un siècle, interrompus par le manque d'argent et par la guerre civile. La façade que vous voyez, de style classique, a été dessinée plus tard pour s'harmoniser avec le palais royal en face. La cathédrale a finalement été consacrée en 1993 par le pape Jean-Paul deux. C'est ici que le roi Felipe six a épousé Letizia, en 2004. Le nom d'Almudena vient de l'arabe al-mudayna, la citadelle. Selon la légende, une statue de la Vierge, cachée dans le rempart pour la protéger des musulmans, aurait été miraculeusement retrouvée en 1085, quand Alphonse six a pris la ville. Elle est devenue la patronne de Madrid. Juste en contrebas, dans le petit parc de l'émir Mohammed premier, on voit encore un morceau de la muraille arabe."}, {"id": "palacio", "name": "Palais royal", "lat": 40.417, "lon": -3.7144, "radius": 60, "text": "Vous êtes sur la place de l'Armurerie, entre la cathédrale et le palais royal. C'est ici que tout a commencé : à cet endroit se dressait la forteresse arabe du neuvième siècle, devenue ensuite l'Alcazar, le château des rois de Castille puis des Habsbourg. La nuit de Noël 1734, l'Alcazar est détruit par un incendie. Le roi Philippe cinq, petit-fils de Louis quatorze, décide de construire à la place un palais à la manière de Versailles, mais entièrement en pierre, pour qu'il ne brûle plus jamais. Les plans sont de l'Italien Filippo Juvarra puis de son élève Giovanni Battista Sacchetti. Les travaux commencent en 1738, et le premier roi à y habiter est Charles trois, en 1764. Avec plus de trois mille pièces, c'est l'un des plus grands palais royaux d'Europe. Aujourd'hui, le roi n'y habite pas : il vit au palais de la Zarzuela, à l'extérieur de la ville, et ce palais sert aux cérémonies officielles. Avancez jusqu'à la grille, côté ouest : la vue plonge sur les jardins du Campo del Moro et, au loin, sur l'immense parc de la Casa de Campo et la sierra."}, {"id": "oriente", "name": "Plaza de Oriente", "lat": 40.41864, "lon": -3.7121, "radius": 60, "text": "Voici la plaza de Oriente, la place de l'Orient, ainsi nommée parce qu'elle s'étend à l'est du palais. Elle a été ouverte par Joseph Bonaparte, qui fit raser tout un quartier de maisons, puis aménagée au dix-neuvième siècle sous la reine Isabelle deux. Au centre, la statue équestre de Philippe quatre, par Pietro Tacca, achevée en 1640, est une prouesse : c'est l'une des premières grandes statues équestres au monde où le cheval se cabre, en équilibre sur ses seules pattes arrière. On raconte que Galilée lui-même aurait conseillé le sculpteur : l'arrière de la statue est massif, et l'avant creux. Tout autour, les statues de rois de l'ancienne Espagne étaient prévues pour orner la corniche du palais. Elles ont finalement été descendues, selon une légende, parce que la reine aurait rêvé qu'elles lui tombaient dessus. En face du palais, le Teatro Real, l'opéra de Madrid, inauguré en 1850 sous Isabelle deux, et l'une des grandes scènes lyriques d'Europe."}, {"id": "sabatini", "name": "Jardins de Sabatini", "lat": 40.42033, "lon": -3.714, "radius": 55, "text": "Voici les jardins de Sabatini, au pied de la façade nord du palais. Ils portent le nom de Francesco Sabatini, l'architecte italien du roi Charles trois, qui avait construit ici les grandes écuries royales. Ces écuries ont été démolies dans les années 1930, et l'on a dessiné à leur place ce jardin à la française, tout en géométrie : haies de buis taillées, bassin rectangulaire, statues de rois et alignements de cyprès. Longtemps fermé, il n'a été ouvert au public qu'en 1978, par le roi Juan Carlos. De la terrasse, vous avez l'une des plus belles vues sur la façade du palais. Profitez-en pour faire une pause sur un banc avant de continuer vers la plaza de España."}, {"id": "espana", "name": "Plaza de España", "lat": 40.42361, "lon": -3.71324, "radius": 70, "text": "Vous arrivez sur la plaza de España, l'une des plus grandes places de Madrid. Au centre, le monument à Cervantès, l'auteur de Don Quichotte. Devant l'écrivain assis, vous reconnaîtrez les deux héros du roman en bronze : Don Quichotte, maigre et droit sur son cheval Rossinante, et Sancho Panza, rond et jovial, sur son âne. Le monument a été commencé dans les années 1920 et achevé seulement en 1957. Derrière, deux tours ont marqué l'histoire de la ville : l'Edificio España, inauguré en 1953, et la Torre de Madrid, de 1957, longtemps l'un des plus hauts bâtiments de béton du monde. C'était le symbole du Madrid des années cinquante, qui voulait ressembler à New York. La place a été entièrement réaménagée et rendue aux piétons en 2021. Nous allons faire un petit détour, à gauche, vers une colline où se cache un véritable temple égyptien."}, {"id": "debod", "name": "Temple de Debod", "lat": 40.42402, "lon": -3.71777, "radius": 60, "text": "Voici le temple de Debod, un authentique temple égyptien vieux de plus de deux mille ans. Il a été construit au deuxième siècle avant Jésus-Christ, en Nubie, au sud d'Assouan, par le roi Adikhalamani, et dédié au dieu Amon et à la déesse Isis. Dans les années 1960, la construction du grand barrage d'Assouan menaçait d'engloutir sous un lac les temples de Nubie. L'Unesco lance alors un appel international pour les sauver, dont le célèbre Abou Simbel. L'Espagne y participe, et en remerciement, l'Égypte lui offre ce temple en 1968. Il a été démonté pierre par pierre, transporté en bateau, et remonté ici. Il a ouvert au public en 1972, orienté d'est en ouest comme à l'origine. L'endroit n'a pas été choisi au hasard : il y avait sur cette colline la caserne de la Montaña, où se sont déroulés en juillet 1936 parmi les premiers combats de la guerre civile. Avancez jusqu'au belvédère : la vue sur le palais royal, la cathédrale et la Casa de Campo est l'une des plus belles de Madrid."}, {"id": "granvia", "name": "Gran Vía et Callao", "lat": 40.41991, "lon": -3.70591, "radius": 60, "text": "Vous venez de descendre la Gran Vía jusqu'à la place de Callao. La Gran Vía est née d'un grand projet d'urbanisme : au début du vingtième siècle, il fallait relier le quartier d'Argüelles au centre à travers un labyrinthe de ruelles. Les travaux commencent en 1910, en présence du roi Alphonse treize, et durent une vingtaine d'années. On démolit plusieurs centaines de maisons et l'on fait disparaître des dizaines de rues. Le long de cette avenue s'élèvent les premiers grands immeubles modernes d'Espagne : banques, grands magasins, hôtels, et surtout cinémas et théâtres. C'est pourquoi on l'appelle le Broadway madrilène. Regardez l'immeuble en proue, au coin de la place, avec sa célèbre enseigne lumineuse Schweppes : c'est l'Edificio Carrión, ou Capitol, de 1933, un chef-d'œuvre de l'Art déco. La place de Callao, elle, rappelle une bataille navale de 1866 au Pérou. Nous allons maintenant descendre la rue piétonne de Preciados vers un rendez-vous gourmand."}, {"id": "gines", "name": "San Ginés · chocolat et churros", "lat": 40.41674, "lon": -3.70694, "radius": 45, "text": "Vous voici devant la chocolatería San Ginés, dans le petit passage du même nom. Elle sert du chocolat chaud et des churros depuis 1894, jour et nuit. Le passage longe l'église de San Ginés, l'une des plus anciennes paroisses de Madrid. Le principe : on paie d'abord à la caisse, puis on vous installe à une table. À commander : le chocolate con churros, un chocolat très épais, presque une crème, dans lequel on trempe les churros, ces beignets fins et croustillants. Goûtez aussi les porras, des churros plus gros et plus moelleux. Pour les Madrilènes, c'est autant un petit-déjeuner qu'un goûter, ou la fin d'une longue nuit de fête."}, {"id": "sol", "name": "Puerta del Sol", "lat": 40.41695, "lon": -3.70353, "radius": 60, "text": "Voici la Puerta del Sol, la porte du Soleil. Il y avait ici, au quinzième siècle, une porte de l'enceinte, tournée vers l'est, vers le soleil levant. Le grand bâtiment au clocher est la Real Casa de Correos, l'ancienne poste royale, construite dans les années 1760 par l'architecte français Jacques Marquet. C'est aujourd'hui le siège du gouvernement de la région de Madrid. Son horloge est la plus célèbre d'Espagne : à minuit, le 31 décembre, tout le pays mange un grain de raisin à chacun des douze coups, en direct à la télévision. Sur le trottoir devant la porte, une plaque marque le kilomètre zéro, point de départ des routes nationales espagnoles. C'est aussi ici que, le 2 mai 1808, les Madrilènes se sont soulevés contre les troupes de Napoléon, un épisode peint par Goya. Cherchez enfin la statue de l'ours et de l'arbousier, le symbole de Madrid, que l'on retrouve sur les armoiries de la ville. Nous remontons maintenant la calle de Alcalá."}, {"id": "metropolis", "name": "Édifice Metrópolis", "lat": 40.41887, "lon": -3.69732, "radius": 55, "text": "Voici l'édifice Metrópolis, à la pointe entre la calle de Alcalá et le début de la Gran Vía. C'est sans doute l'immeuble le plus photographié de Madrid. Il a été construit de 1907 à 1911 pour une compagnie d'assurances, la Unión y el Fénix, sur les plans de deux architectes français, Jules et Raymond Février. Son style rappelle les grands immeubles parisiens de la Belle Époque, avec son dôme d'ardoise rehaussé de dorures. À l'origine, le dôme portait un phénix, l'emblème de la compagnie. Quand la compagnie Metrópolis a racheté l'immeuble en 1972, le phénix a été remplacé par la Victoire ailée que vous voyez aujourd'hui. La calle de Alcalá était autrefois la route qui menait à Alcalá de Henares, la ville natale de Cervantès. Plus bas, vous apercevez la fontaine de Cibeles. Il est temps de rentrer : remontez la Gran Vía sur trois cents mètres jusqu'à la station de métro."}, {"id": "metro", "name": "Métro Gran Vía · retour", "lat": 40.41985, "lon": -3.70161, "radius": 50, "text": "Vous voici à la station Gran Vía. Prenez la ligne 1, direction Pinar de Chamartín, et descendez deux stations plus loin, à Bilbao. Petite anecdote : cette ligne 1 est la plus ancienne de Madrid. Elle a été inaugurée en 1919 par le roi Alphonse treize, entre Sol et Cuatro Caminos. Et regardez de l'autre côté de l'avenue la haute tour de Telefónica, achevée en 1929 : avec ses 89 mètres, elle a été l'un des premiers gratte-ciel d'Europe. Pendant la guerre civile, elle servait de poste d'observation, et les journalistes étrangers venaient y téléphoner leurs articles, sous les bombardements. Bon retour !"}];
+const OUTRO = {"id": "arrivee", "name": "Arrivée", "lat": 40.43005, "lon": -3.70113, "radius": 45, "text": "Vous voici de retour. En un après-midi, vous avez traversé mille ans d'histoire de Madrid, de la muraille arabe à la Gran Vía. Ce soir, pour dîner, pensez au cocido madrileño, le pot-au-feu local, ou à quelques tapas dans le quartier de Malasaña, tout proche. Bonne soirée !"};
+const FOOD = [];
+const ALL = [...STOPS, OUTRO];
+const $ = id => document.getElementById(id);
+
+/* ---------- état ---------- */
+let played = new Set();
+try { played = new Set(JSON.parse(localStorage.getItem('madrid-played') || '[]')); } catch(e) {}
+const savePlayed = () => { try { localStorage.setItem('madrid-played', JSON.stringify([...played])); } catch(e) {} };
+let current = null, queue = [], lastPos = null, watchId = null, wakeLock = null, started = false;
+
+/* ---------- distance ---------- */
+function dist(a, b) {
+  const R = 6371000, r = Math.PI/180;
+  const dLat = (b.lat-a.lat)*r, dLon = (b.lon-a.lon)*r;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const fmt = m => m < 1000 ? Math.round(m/10)*10 + ' m' : (m/1000).toFixed(1).replace('.', ',') + ' km';
+
+/* ---------- carte ---------- */
+let map, userMarker, accCircle, pins = {};
+if (window.L) {
+  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, rotateControl: false, touchRotate: true, bearing: 0,
+    zoomSnap: 0, zoomDelta: 0.5, bounceAtZoomLimits: false });   /* pas de saut de zoom quand on relâche les doigts */
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+  }).addTo(map);
+  /* rendu du tracé : large marge + redessin continu pendant zoom / rotation au doigt */
+  window.routeRenderer = L.svg({ padding: 1 });
+  const line = window.routeLine = L.polyline(TRACK, { renderer: routeRenderer, dashArray: '6 8', color: getComputedStyle(document.documentElement).getPropertyValue('--ria').trim() || '#1f6f6b', weight: 5, opacity: .85 }).addTo(map);
+  let rafPending = false;
+  /* pendant que les doigts sont sur l'écran : on recalcule le tracé à chaque image
+     à l'échelle et à l'angle courants, pour qu'il reste collé à la carte */
+  const redrawRoute = () => {
+    if (rafPending) return; rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; try { routeRenderer._reset(); } catch(e) { try { routeRenderer._update(); } catch(_) {} } });
+  };
+  map.on('zoom move rotate viewreset', redrawRoute);
+  map.on('rotate', () => { if (!coneRaf) coneRaf = requestAnimationFrame(drawCone); });
+  map.fitBounds(line.getBounds(), { padding: [20, 20] });
+  STOPS.forEach((s, i) => {
+    const icon = L.divIcon({ className: '', html: `<div class="pin" id="pin-${s.id}">${i+1}</div>`, iconSize: [26,26], iconAnchor: [13,13] });
+    pins[s.id] = L.marker([s.lat, s.lon], { icon }).addTo(map).bindPopup(s.name);
+  });
+  FOOD.forEach(f => {
+    const icon = L.divIcon({ className: '', html: `<div class="pin food${f.kind === 'sight' ? ' sight' : ''}" id="pin-${f.id}">${f.kind === 'sight' ? 'i' : 'T'}</div>`, iconSize: [24,24], iconAnchor: [12,12] });
+    pins[f.id] = L.marker([f.lat, f.lon], { icon }).addTo(map).bindPopup(f.name + ' · ' + f.place);
+  });
+} else {
+  $('map').textContent = 'Carte indisponible (connexion ?). Les étapes et l’audio fonctionnent quand même.';
+  $('map').style.cssText += 'display:grid;place-items:center;padding:16px;color:var(--muted);text-align:center';
+}
+
+/* ---------- liste ---------- */
+function renderList() {
+  const ol = $('stops'); ol.innerHTML = '';
+  STOPS.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.className = 'stop-item' + (played.has(s.id) ? ' done' : '') + (current && current.id === s.id ? ' playing' : '');
+    const d = lastPos ? fmt(dist(lastPos, s)) : '';
+    li.innerHTML = `<span class="num">${i+1}</span><div style="min-width:0"><div class="stop-name"></div><div class="stop-meta">${played.has(s.id) ? 'Écouté' : ''}${played.has(s.id) && d ? ' · ' : ''}${d}</div></div>`;
+    li.querySelector('.stop-name').textContent = s.name;
+    const b = document.createElement('button');
+    const isPlaying = current && current.id === s.id;
+    b.textContent = isPlaying ? 'Arrêter' : 'Écouter';
+    b.onclick = () => isPlaying ? stopSpeech() : play(s, true);
+    li.appendChild(b); ol.appendChild(li);
+    const pin = document.getElementById('pin-' + s.id);
+    if (pin) pin.classList.toggle('done', played.has(s.id));
+  });
+  const fl = $('food'); fl.innerHTML = '';
+  FOOD.forEach(f => {
+    const li = document.createElement('li');
+    li.className = 'stop-item' + (played.has(f.id) ? ' done' : '') + (current && current.id === f.id ? ' playing' : '');
+    const d = lastPos ? fmt(dist(lastPos, f)) : '';
+    li.innerHTML = `<span class="num food${f.kind === 'sight' ? ' sight' : ''}">${f.kind === 'sight' ? 'i' : 'T'}</span><div style="min-width:0"><div class="stop-name"></div><div class="stop-meta"></div></div>`;
+    li.querySelector('.stop-name').textContent = f.name;
+    li.querySelector('.stop-meta').textContent = f.place + (d ? ' · ' + d : '');
+    const b = document.createElement('button');
+    const isPlaying = current && current.id === f.id;
+    b.textContent = isPlaying ? 'Arrêter' : 'Écouter';
+    b.onclick = () => isPlaying ? stopSpeech() : play(f, true);
+    li.appendChild(b); fl.appendChild(li);
+  });
+  try { updateAskLinks(); } catch(e) {}
+  const nxt = STOPS.find(s => !played.has(s.id));
+  if (!nxt) $('next').innerHTML = 'Toutes les étapes sont écoutées. Retour vers le point de départ.';
+  else $('next').innerHTML = `Prochaine étape : <b></b>${lastPos ? ' · <b>' + fmt(dist(lastPos, nxt)) + '</b>' : ''}`, $('next').querySelector('b').textContent = nxt.name;
+}
+
+/* ---------- voix ---------- */
+const synth = window.speechSynthesis;
+let voices = [];
+const NOVELTY = /eloquence|eddy|flo\b|grandma|grandpa|grand-m|grand-p|reed|rocko|sandy|shelley|bahh|bells|boing|bubbles|cellos|wobble|jester|organ|trinoids|whisper|zarvox|albert|bad news|good news|superstar|junior|ralph|kathy|fred/i;
+function quality(v) {
+  const id = (v.voiceURI || '') + ' ' + v.name;
+  if (/premium/i.test(id)) return 'premium';
+  if (/enhanced|amélior/i.test(id)) return 'améliorée';
+  return '';
+}
+function scoreVoice(v) {
+  const id = (v.voiceURI || '') + ' ' + v.name;
+  let s = 0;
+  if (/^fr[-_]FR/i.test(v.lang)) s += 20; else if (/^fr/i.test(v.lang)) s += 10;
+  const q = quality(v); if (q === 'premium') s += 40; else if (q) s += 30;
+  if (/neural|natural|online|google/i.test(id)) s += 15;
+  if (NOVELTY.test(id)) s -= 60;
+  return s;
+}
+const SYSTEM = '__system__';
+function loadVoices() {
+  if (!synth) return;
+  voices = synth.getVoices().filter(v => /^fr/i.test(v.lang)).sort((a,b) => scoreVoice(b) - scoreVoice(a));
+  const sel = $('voiceSel'); const prev = sel.value; sel.innerHTML = '';
+  const def = document.createElement('option'); def.value = SYSTEM; def.textContent = 'Voix choisie dans les réglages du téléphone'; sel.appendChild(def);
+  voices.forEach(v => { const o = document.createElement('option'); o.value = v.name; const q = quality(v); o.textContent = `${v.name}${q ? ' · ' + q : ''} (${v.lang})`; sel.appendChild(o); });
+  let saved = null; try { saved = localStorage.getItem('madrid-voice'); } catch(e) {}
+  if (saved && (saved === SYSTEM || voices.some(v => v.name === saved))) sel.value = saved;
+  else if (prev) sel.value = prev;
+  else sel.value = SYSTEM;
+}
+if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; }
+$('voiceSel').onchange = e => { try { localStorage.setItem('madrid-voice', e.target.value); } catch(_) {} };
+
+/* Prononciation : noms basques et espagnols réécrits pour la voix française (texte affiché inchangé) */
+const PHONETIC = [["Giovanni Battista Sacchetti", "Djovanni Battista Sakétti"], ["San Miguel de los Octoes", "Sann Miguel dé loss Okto-ess"], ["Posada del León de Oro", "Possada dél Léonn dé Oro"], ["chocolatería San Ginés", "tchokolatéria Sann Hinéss"], ["bocadillo de calamares", "bokadiyo dé kalamaréss"], ["callos a la madrileña", "kayoss a la madrilégna"], ["caserne de la Montaña", "caserne de la Monntagna"], ["chocolate con churros", "tchokolaté konn tchourross"], ["Casa de la Panadería", "Kassa dé la Panadéria"], ["Real Casa de Correos", "Réal Kassa dé Korréoss"], ["tortilla de patatas", "tortiya dé patatass"], ["arco de Cuchilleros", "arko dé Koutchiyéross"], ["Posada de la Villa", "Possada dé la Viya"], ["Juan Gómez de Mora", "Rouann Gomess dé Mora"], ["Juan de Villanueva", "Rouann dé Viyanouéva"], ["Pinar de Chamartín", "Pinar dé Tchamartinn"], ["plaza de la Villa", "plassa dé la Viya"], ["plaza del Arrabal", "plassa dél Arrabal"], ["Mariano Benlliure", "Mariano Benn-liouré"], ["Alcalá de Henares", "Alkala dé Énaréss"], ["gambas al ajillo", "gammbass al ahiyo"], ["Casa de la Villa", "Kassa dé la Viya"], ["plaza de Oriente", "plassa dé Orienté"], ["Casa de Cisneros", "Kassa dé Sisnéross"], ["Edificio Carrión", "Édifissio Karrionn"], ["Unión y el Fénix", "Ounionn i él Féniks"], ["cocido madrileño", "kossido madrilégno"], ["plaza de España", "plassa dé Espagna"], ["Edificio España", "Édifissio Espagna"], ["Torre de Madrid", "Torré dé Madrid"], ["Álvaro de Bazán", "Alvaro dé Bassann"], ["Filippo Juvarra", "Filippo Jouvarra"], ["calle de Alcalá", "kayé dé Alkala"], ["Tirso de Molina", "Tirsso dé Molina"], ["Pepe Plazuelas", "Pépé Plassouélass"], ["Campo del Moro", "Kammpo dél Moro"], ["Puerta del Sol", "Pouérta dél Sol"], ["Cuatro Caminos", "Kouatro Kaminoss"], ["Casa de Campo", "Kassa dé Kammpo"], ["huevos rotos", "ouévoss rotoss"], ["Sancho Panza", "Sanntcho Panntsa"], ["Adikhalamani", "Adikalamani"], ["Pietro Tacca", "Piétro Takka"], ["plaza Mayor", "plassa Maïor"], ["los Lujanes", "loss Louhanéss"], ["Teatro Real", "Téatro Réal"], ["Juan Carlos", "Rouann Karloss"], ["Valdecarros", "Valdékarross"], ["San Miguel", "Sann Miguel"], ["al-mudayna", "al moudaïna"], ["Rossinante", "Rossinannté"], ["Metrópolis", "Métropoliss"], ["Telefónica", "Téléfonika"], ["Manzanares", "Manntsanaréss"], ["Casa Lucio", "Kassa Loussio"], ["Argüelles", "Argouéyéss"], ["Preciados", "Pressiadoss"], ["San Ginés", "Sann Hinéss"], ["Cava Baja", "Kava Baha"], ["croquetas", "krokétass"], ["Cisneros", "Sisnéross"], ["Almudena", "Almoudéna"], ["Zarzuela", "Sarssouéla"], ["Gran Vía", "Grann Via"], ["Austrias", "Aoustriass"], ["Malasaña", "Malassagna"], ["Mohammed", "Mohammed"], ["Cibeles", "Sibéléss"], ["churros", "tchourross"], ["posadas", "possadass"], ["Felipe", "Félipé"], ["Callao", "Kaïao"], ["porras", "porrass"], ["Mayrit", "Maïrite"], ["cava", "kava"]];
+const phonetic = t => PHONETIC.reduce((acc, [a, b]) => acc.split(a).join(b), t);
+function chunks(text) {
+  const parts = text.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+  const out = []; let buf = '';
+  for (const p of parts) { if ((buf + p).length > 220 && buf) { out.push(buf.trim()); buf = p; } else buf += p; }
+  if (buf.trim()) out.push(buf.trim());
+  return out;
+}
+let speakToken = 0;
+function speak(text, onEnd) {
+  if (!synth) { onEnd && onEnd(); return; }
+  synth.cancel();
+  const token = ++speakToken;
+  const list = chunks(phonetic(text));
+  const choice = $('voiceSel').value;
+  const voice = choice === SYSTEM ? null : (voices.find(v => v.name === choice) || null);
+  let i = 0;
+  const next = () => {
+    if (token !== speakToken) return;
+    if (i >= list.length) { onEnd && onEnd(); return; }
+    const u = new SpeechSynthesisUtterance(list[i++]);
+    if (voice) u.voice = voice;
+    u.lang = voice ? voice.lang : 'fr-FR';
+    u.rate = parseFloat($('rate').value) || 1;
+    u.onend = next; u.onerror = next;
+    synth.speak(u);
+  };
+  next();
+}
+function stopSpeech() {
+  speakToken++; if (synth) synth.cancel();
+  current = null; queue = [];
+  $('stopBtn').hidden = true; $('now').textContent = 'Voix arrêtée';
+  renderList();
+}
+function play(stop, manual) {
+  if (manual) queue = [];
+  const changed = !lastStop || lastStop.id !== stop.id;
+  current = stop; lastStop = stop; try { localStorage.setItem('madrid-last', stop.id); } catch(e) {}
+  if (changed) { try { $('qText').value = ''; $('info').hidden = true; } catch(e) {} }
+  played.add(stop.id); savePlayed();
+  $('now').textContent = stop.name; $('stopBtn').hidden = false;
+  if (pins[stop.id] && map) pins[stop.id].openPopup();
+  renderList();
+  speak(stop.text, () => {
+    current = null; $('stopBtn').hidden = true;
+    $('now').textContent = 'En route…';
+    renderList();
+    const n = queue.shift(); if (n && !played.has(n.id)) play(n);
+  });
+}
+
+/* ---------- géolocalisation ---------- */
+/* ---------- Progression sur le parcours (aucun enregistrement du trajet : simple projection de la position sur le tracé) ---------- */
+let CUM = [0], TOTAL = 0;
+function computeCum() { CUM = [0]; for (let i = 1; i < TRACK.length; i++) CUM.push(CUM[i-1] + dist({ lat: TRACK[i-1][0], lon: TRACK[i-1][1] }, { lat: TRACK[i][0], lon: TRACK[i][1] })); TOTAL = CUM[CUM.length - 1]; }
+computeCum();
+/* ---------- trace piétonne réelle (OSRM piéton, sinon Valhalla) chargée par le téléphone, gardée en mémoire ---------- */
+function decodePoly(str, prec) {
+  const f = Math.pow(10, prec); let idx = 0, lat = 0, lon = 0; const pts = [];
+  while (idx < str.length) {
+    let r = 0, s = 0, b; do { b = str.charCodeAt(idx++) - 63; r |= (b & 31) << s; s += 5; } while (b >= 32); lat += (r & 1) ? ~(r >> 1) : (r >> 1);
+    r = 0; s = 0; do { b = str.charCodeAt(idx++) - 63; r |= (b & 31) << s; s += 5; } while (b >= 32); lon += (r & 1) ? ~(r >> 1) : (r >> 1);
+    pts.push([Math.round(lat / f * 1e5) / 1e5, Math.round(lon / f * 1e5) / 1e5]);
+  }
+  return pts;
+}
+async function routeOSRM() {
+  const c = WAYPOINTS.map(p => p[1] + ',' + p[0]).join(';');
+  const r = await fetch('https://routing.openstreetmap.de/routed-foot/route/v1/driving/' + c + '?overview=full&geometries=polyline');
+  const d = await r.json(); if (!d.routes || !d.routes[0]) throw new Error('osrm');
+  return decodePoly(d.routes[0].geometry, 5);
+}
+async function routeValhalla() {
+  const q = { locations: WAYPOINTS.map(p => ({ lat: p[0], lon: p[1] })), costing: 'pedestrian' };
+  const r = await fetch('https://valhalla1.openstreetmap.de/route?json=' + encodeURIComponent(JSON.stringify(q)));
+  const d = await r.json(); if (!d.trip) throw new Error('valhalla');
+  return d.trip.legs.flatMap((l, i) => { const p = decodePoly(l.shape, 6); return i ? p.slice(1) : p; });
+}
+function applyTrack(t) {
+  if (!t || t.length < 10) return false;
+  TRACK = t; computeCum();
+  if (window.routeLine) { routeLine.setLatLngs(TRACK); routeLine.setStyle({ dashArray: null }); }
+  return true;
+}
+(async () => {
+  try { const s = JSON.parse(localStorage.getItem('madrid-track') || 'null'); if (applyTrack(s)) return; } catch(e) {}
+  for (const f of [routeOSRM, routeValhalla]) {
+    try { const t = await f(); if (applyTrack(t)) { try { localStorage.setItem('madrid-track', JSON.stringify(t)); } catch(e) {} return; } } catch(e) {}
+  }
+})();
+/* ---------- export GPX (étapes + trace) ---------- */
+function downloadGpx() {
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  let g = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="enjoy.lu" xmlns="http://www.topografix.com/GPX/1/1">\n';
+  [...STOPS, OUTRO].forEach((s, i) => { g += `<wpt lat="${s.lat}" lon="${s.lon}"><name>${esc(s === OUTRO ? 'Arrivée' : (i+1) + '. ' + s.name)}</name></wpt>\n`; });
+  g += '<trk><name>Madrid à pied</name><trkseg>\n' + TRACK.map(p => `<trkpt lat="${p[0]}" lon="${p[1]}"/>`).join('\n') + '\n</trkseg></trk>\n</gpx>\n';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([g], { type: 'application/gpx+xml' })); a.download = 'balade-madrid.gpx';
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+let progM = null, t0 = null, p0 = null;   // t0 / p0 : heure et position sur le parcours au démarrage (on peut démarrer à mi-parcours)
+try { const v = Number(localStorage.getItem('madrid-t0')); if (v) t0 = v; const w = localStorage.getItem('madrid-p0'); if (w !== null && w !== '') p0 = Number(w); } catch(e) {}
+function projectOnTrack(pos) {
+  const kx = 111320 * Math.cos(pos.lat * Math.PI / 180), ky = 110540;
+  let best = null;
+  for (let i = 0; i < TRACK.length - 1; i++) {
+    if (progM !== null && CUM[i+1] < progM - 150) continue;          // on ne revient pas en arrière (aller-retour de Debod)
+    const ax = (TRACK[i][1] - pos.lon) * kx, ay = (TRACK[i][0] - pos.lat) * ky;
+    const bx = (TRACK[i+1][1] - pos.lon) * kx, by = (TRACK[i+1][0] - pos.lat) * ky;
+    const dx = bx - ax, dy = by - ay, L2 = dx*dx + dy*dy;
+    const t = L2 ? Math.max(0, Math.min(1, -(ax*dx + ay*dy) / L2)) : 0;
+    const d = Math.hypot(ax + t*dx, ay + t*dy);
+    if (!best || d < best.d - 0.5) best = { d, m: CUM[i] + t * (CUM[i+1] - CUM[i]) };
+  }
+  return best;
+}
+const fmtMin = s => { const m = Math.max(1, Math.round(s / 60)); return m < 60 ? m + ' min' : Math.floor(m/60) + ' h ' + String(m % 60).padStart(2, '0'); };
+function updateProgress(pos, accuracy) {
+  if (!started || accuracy > 60) return;
+  const b = projectOnTrack(pos);
+  if (!b || b.d > 80) { $('prog').hidden = false; $('prog').textContent = 'Hors du parcours (à ' + fmt(b ? b.d : 999) + ' du tracé)'; return; }
+  progM = b.m;
+  if (p0 === null) { p0 = progM; t0 = Date.now(); try { localStorage.setItem('madrid-p0', String(Math.round(p0))); localStorage.setItem('madrid-t0', String(t0)); } catch(e) {} }
+  const rest = Math.max(0, TOTAL - progM), done = progM - p0;   // vitesse = chemin fait depuis le démarrage, pas depuis le début du parcours
+  let eta = rest / (4.5 / 3.6), est = true;   // 4,5 km/h par défaut
+  if (t0) { const el = (Date.now() - t0) / 1000; if (el > 180 && done > 150) { eta = rest / (done / el); est = false; } }
+  $('prog').hidden = false;
+  $('prog').innerHTML = 'Depuis le départ : <b>' + fmt(progM) + '</b> · Reste : <b>' + fmt(rest) + '</b> · ≈ <b>' + fmtMin(eta) + '</b>' + (est ? ' (à 4,5 km/h)' : ' (à votre rythme)');
+}
+
+function onPos(p) {
+  const { latitude: lat, longitude: lon, accuracy } = p.coords;
+  lastPos = { lat, lon };
+  try { updateProgress(lastPos, accuracy); } catch(e) {}
+  try { updateCourse(p); } catch(e) {}
+  $('gpsDot').className = 'dot ' + (accuracy <= 30 ? 'on' : 'warn');
+  $('gpsText').textContent = `GPS actif · précision ${Math.round(accuracy)} m`;
+  if (map) {
+    if (!userMarker) {
+      userMarker = L.marker([lat, lon], { interactive: false, icon: L.divIcon({ className: '', html: '<div class="user-loc" id="userLoc"><svg class="user-cone" viewBox="0 0 96 96" aria-hidden="true"><defs><radialGradient id="ucg" cx="48" cy="48" r="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2a7de1" stop-opacity=".75"/><stop offset=".35" stop-color="#2a7de1" stop-opacity=".45"/><stop offset="1" stop-color="#2a7de1" stop-opacity="0"/></radialGradient></defs><path d="M48 48 L25.5 9 A45 45 0 0 1 70.5 9 Z" fill="url(#ucg)"/></svg><div class="user-dot"></div></div>', iconSize: [96,96], iconAnchor: [48,48] }), zIndexOffset: 1000 }).addTo(map);
+      drawCone();
+      accCircle = L.circle([lat, lon], { renderer: window.routeRenderer, radius: accuracy, color: '#2a7de1', weight: 1, fillOpacity: .08 }).addTo(map);
+    } else { userMarker.setLatLng([lat, lon]); accCircle.setLatLng([lat, lon]).setRadius(accuracy); }
+  }
+  if (accuracy <= 60) {
+    const visited = STOPS.filter(s => played.has(s.id)).length;
+    const foodOn = false;
+    const pool = [...ALL, ...FOOD].filter(s => !played.has(s.id) && (s !== OUTRO || visited >= 8) && (!FOOD.includes(s) || foodOn));
+    const hits = pool.map(s => ({ s, d: dist(lastPos, s) })).filter(x => x.d <= x.s.radius).sort((a,b) => a.d - b.d);
+    if (hits.length) {
+      const s = hits[0].s;
+      if (!current) play(s);
+      else if (current.id !== s.id && !queue.includes(s)) queue.push(s);
+    }
+  }
+  renderList();
+  try { if (aroundOpen) refreshAround(false); } catch(e) {}
+}
+function onErr(e) {
+  $('gpsDot').className = 'dot warn';
+  $('gpsText').textContent = e.code === 1
+    ? 'Localisation refusée · autorisez-la dans les réglages du navigateur, ou utilisez les boutons Écouter'
+    : 'Signal GPS faible · utilisez les boutons Écouter si besoin';
+}
+async function keepAwake() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+document.addEventListener('visibilitychange', () => { if (started && document.visibilityState === 'visible') keepAwake(); });
+
+/* ---------- Cône de direction (boussole), activé avec la localisation ---------- */
+let userHeading = null, coneRaf = 0, headingOn = false;
+function screenAngle() { return (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (typeof window.orientation === 'number' ? window.orientation : 0); }
+function drawCone() {
+  coneRaf = 0;
+  const el = document.getElementById('userLoc'); if (!el || userHeading === null) return;
+  el.classList.add('has-heading');
+  const b = (map && map.getBearing) ? map.getBearing() : 0;
+  const a = orient ? 0 : (userHeading + b + 360) % 360;   // carte orientée : la carte tourne avec l'iPhone, le cône pointe toujours vers le haut
+  el.querySelector('.user-cone').style.transform = 'rotate(' + Math.round(a) + 'deg)';
+}
+function onHeading(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h === null) return;
+  userHeading = (h + screenAngle() + 360) % 360;
+  if (orient) applyHeading();
+  if (!coneRaf) coneRaf = requestAnimationFrame(drawCone);
+}
+function startHeading() {
+  if (headingOn) return; headingOn = true;
+  const go = () => { window.addEventListener('deviceorientationabsolute', onHeading); window.addEventListener('deviceorientation', onHeading); };
+  try {
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(() => go()).catch(() => go());   // si refusé, aucun événement n'arrivera : sans danger
+    } else go();
+  } catch (e) { headingOn = false; }
+}
+
+$('startBtn').onclick = () => {
+  startHeading();   // demandé dans le geste du doigt (obligatoire sur iPhone)
+  if (started) { $('startBtn').textContent = 'Visite en cours'; return; }
+  started = true;
+  $('startBtn').textContent = 'Visite en cours';
+  keepAwake();
+  if ('geolocation' in navigator) {
+    $('gpsText').textContent = 'Recherche du signal GPS…';
+    watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+  } else onErr({ code: 2 });
+  current = { id: 'intro', name: 'Introduction' };
+  $('now').textContent = 'Introduction'; $('stopBtn').hidden = false;
+  speak(INTRO, () => {
+    current = null; $('stopBtn').hidden = true; $('now').textContent = 'En route…'; renderList();
+    const n = queue.shift(); if (n && !played.has(n.id)) play(n);
+  });
+};
+$('stopBtn').onclick = stopSpeech;
+$('gpxBtn').onclick = downloadGpx;
+$('testBtn').onclick = () => speak('Bonjour, je serai votre guide aujourd’hui à Madrid.');
+$('resetBtn').onclick = () => { $('confirmBox').hidden = false; $('resetBtn').hidden = true; $('confirmNo').focus(); };
+$('confirmNo').onclick = () => { $('confirmBox').hidden = true; $('resetBtn').hidden = false; };
+$('confirmYes').onclick = () => {
+  $('confirmBox').hidden = true; $('resetBtn').hidden = false;
+  stopSpeech(); played.clear(); savePlayed();
+  t0 = null; p0 = null; progM = null; $('prog').hidden = true; try { localStorage.removeItem('madrid-t0'); localStorage.removeItem('madrid-p0'); } catch(e) {}
+  try { lastStop = null; localStorage.removeItem('madrid-last'); $('qText').value = ''; $('info').hidden = true; } catch(e) {}
+  if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+  watchId = null; started = false;
+  $('startBtn').textContent = 'Démarrer la visite';
+  $('now').textContent = 'Visite remise à zéro';
+  renderList();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+
+/* ---------- contexte : lieu en cours, dernier écouté ou le plus proche ---------- */
+let lastStop = null;
+const GENERAL = { id: 'general', name: 'Madrid et ma balade à pied', text: INTRO };
+try { const lid = localStorage.getItem('madrid-last'); if (lid) lastStop = [...STOPS, ...FOOD, OUTRO].find(s => s.id === lid) || null; } catch(e) {}
+function contextStop() {
+  if (current && current.lat) return current;
+  if (lastStop) return lastStop;
+  return GENERAL;   // rien d'écouté depuis le début (ou après remise à zéro) : Madrid en général
+}
+
+/* ---------- En savoir plus : Wikipédia ---------- */
+const WIKI = {"general": "Madrid", "cava": "Calle de la Cava Baja", "mayor": "Plaza Mayor (Madrid)", "miguel": "Marché de San Miguel", "villa": "Place de la Villa", "almudena": "Cathédrale de l'Almudena", "palacio": "Palais royal de Madrid", "oriente": "Place d'Orient (Madrid)", "sabatini": "Jardins de Sabatini", "espana": "Place d'Espagne (Madrid)", "debod": "Temple de Debod", "granvia": "Gran Vía (Madrid)", "gines": "Chocolatería San Ginés", "sol": "Puerta del Sol", "metropolis": "Edificio Metrópolis", "metro": "Métro de Madrid", "arrivee": "Madrid"};
+const WAPI = 'https://fr.wikipedia.org/w/api.php?format=json&origin=*&';
+async function wikiExtract(title) {
+  const r = await fetch(WAPI + 'action=query&prop=extracts&explaintext=1&exintro=1&redirects=1&titles=' + encodeURIComponent(title));
+  const j = await r.json(); const p = Object.values((j.query || {}).pages || {})[0];
+  if (!p || p.missing !== undefined || !p.extract || p.extract.length < 80) return null;
+  return { title: p.title, text: p.extract };
+}
+async function wikiSearch(q) {
+  const r = await fetch(WAPI + 'action=query&list=search&srlimit=1&srsearch=' + encodeURIComponent(q));
+  const j = await r.json(); const hit = ((j.query || {}).search || [])[0];
+  return hit ? hit.title : null;
+}
+function cleanForSpeech(t) {
+  return t.replace(/\([^()]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(/\s+([,.])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+}
+async function learnMore() {
+  const s = contextStop();
+  const info = $('info'); info.hidden = false; info.textContent = 'Recherche sur Wikipédia : ' + s.name + '…';
+  try {
+    let res = WIKI[s.id] ? await wikiExtract(WIKI[s.id]) : (String(s.id).startsWith('geo-') ? await wikiExtract(s.name) : null);
+    if (!res) { const t = await wikiSearch(s.name + ' Madrid'); if (t) res = await wikiExtract(t); }
+    if (!res) { info.textContent = 'Pas d’article Wikipédia trouvé pour ' + s.name + '.'; return; }
+    let text = cleanForSpeech(res.text);
+    if (text.length > 2000) text = text.slice(0, 2000).replace(/[^.]*$/, '');
+    info.innerHTML = ''; const b = document.createElement('b'); b.textContent = res.title; info.appendChild(b);
+    info.appendChild(document.createTextNode(' · Wikipédia — '));
+    const a = document.createElement('a'); a.href = 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(res.title.replace(/ /g, '_'));
+    a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'ouvrir l’article'; info.appendChild(a);
+    current = { id: 'wiki-' + s.id, name: res.title + ' (Wikipédia)' };
+    $('now').textContent = current.name; $('stopBtn').hidden = false;
+    speak('Selon Wikipédia. ' + text, () => { current = null; $('stopBtn').hidden = true; $('now').textContent = 'En route…'; renderList(); });
+  } catch (e) {
+    info.textContent = 'Wikipédia ne répond pas (connexion ?). Réessayez dans un instant.';
+  }
+}
+$('moreBtn').onclick = learnMore;
+
+/* ---------- Poser une question : ouvre votre IA avec le contexte ---------- */
+function buildPrompt() {
+  const s = contextStop(); const q = $('qText').value.trim() || 'Raconte-moi quelque chose d’intéressant sur ce lieu.';
+  const ctx = (s.text || '').slice(0, 300);
+  const lieu = s === GENERAL ? 'Je fais une balade à pied dans Madrid (Cava Baja, plaza Mayor, palais royal, temple de Debod, Gran Vía, Puerta del Sol).' : `Je visite Madrid à pied et je suis devant : ${s.name}.`;
+  return `${lieu} Contexte déjà entendu dans mon audioguide : « ${ctx}… » Ma question : ${q} Réponds en français, de façon précise et concise (quelques phrases), en privilégiant les faits historiques vérifiables.`;
+}
+function updateAskLinks() {
+  const p = encodeURIComponent(buildPrompt());
+  $('askClaude').href = 'https://claude.ai/new?q=' + p;
+  $('askGpt').href = 'https://chatgpt.com/?q=' + p;
+  $('askGoogle').href = 'https://www.google.com/search?udm=50&q=' + p;
+  $('askCtx').textContent = 'Question sur : ' + contextStop().name + (lastStop && contextStop() === lastStop ? ' (dernier lieu écouté)' : '');
+}
+function setAsk(open) {
+  $('askBox').hidden = !open;
+  $('askBtn').textContent = open ? 'Fermer la question' : 'Poser une question';
+  if (open) { updateAskLinks(); $('askBox').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+}
+$('askBtn').onclick = () => setAsk($('askBox').hidden);
+$('askClose').onclick = () => setAsk(false);
+$('qText').addEventListener('input', updateAskLinks);
+['askClaude','askGpt','askGoogle'].forEach(id => $(id).addEventListener('click', () => {
+  updateAskLinks();
+  setTimeout(() => { $('qText').value = ''; updateAskLinks(); }, 400);   // champ vidé après l'envoi
+}));
+$('qClear').onclick = () => { $('qText').value = ''; updateAskLinks(); $('qText').focus(); };
+
+/* ---------- Orienter la carte dans le sens de la marche ---------- */
+let orient = false, compass = null, lastBearingAt = 0, course = null, prevFix = null;
+function bearingTo(a, b) {
+  const r = Math.PI/180, y = Math.sin((b.lon-a.lon)*r)*Math.cos(b.lat*r);
+  const x = Math.cos(a.lat*r)*Math.sin(b.lat*r) - Math.sin(a.lat*r)*Math.cos(b.lat*r)*Math.cos((b.lon-a.lon)*r);
+  return (Math.atan2(y, x)/r + 360) % 360;
+}
+function applyHeading() {
+  if (!orient || !map || !map.setBearing) return;
+  const h = userHeading !== null ? userHeading : (compass !== null ? compass : course);   // boussole de l'iPhone (comme le cône), sinon sens de la marche
+  if (h === null) return;
+  const now = Date.now(); if (now - lastBearingAt < 250) return; lastBearingAt = now;
+  map.setBearing((360 - h) % 360);
+  if (lastPos) map.panTo([lastPos.lat, lastPos.lon], { animate: false });
+}
+function onOrientation(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h === null) return;
+  compass = h; applyHeading();
+}
+function updateCourse(p) {
+  const { latitude: lat, longitude: lon, heading, speed } = p.coords;
+  if (typeof heading === 'number' && !isNaN(heading) && speed > 0.6) course = heading;
+  else if (prevFix && dist(prevFix, { lat, lon }) > 8) { course = bearingTo(prevFix, { lat, lon }); }
+  else if (speed !== null && speed < 0.3) course = null;
+  if (!prevFix || dist(prevFix, { lat, lon }) > 8) prevFix = { lat, lon };
+  applyHeading();
+}
+async function toggleOrient() {
+  if (!map || !map.setBearing) { $('orientBtn').textContent = 'Rotation indisponible'; return; }
+  orient = !orient;
+  $('orientBtn').setAttribute('aria-pressed', String(orient));
+  $('orientBtn').textContent = orient ? 'Carte orientée' : 'Orienter la carte';
+  if (orient) {
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') compass = null;
+      }
+    } catch (e) {}
+    try { map.touchRotate.disable(); } catch(e) {}
+    window.addEventListener('deviceorientation', onOrientation);
+    window.addEventListener('deviceorientationabsolute', onOrientation);
+    if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 17));
+    applyHeading();
+  } else {
+    window.removeEventListener('deviceorientation', onOrientation);
+    window.removeEventListener('deviceorientationabsolute', onOrientation);
+    map.setBearing(0);
+    try { map.touchRotate.enable(); } catch(e) {}
+  }
+}
+$('orientBtn').onclick = async () => { await toggleOrient(); startHeading(); drawCone(); };
+$('northBtn').onclick = () => { if (orient) toggleOrient(); else if (map && map.setBearing) map.setBearing(0); };
+
+/* ---------- Autour de moi / Je vise (lieux Wikipédia géolocalisés) ---------- */
+const AROUND_R = 300, VISE_R = 250, VISE_HALF = 25, VISE_NEAR = 40;
+let aroundOpen = false, vise = false, viseHeading = null, aroundItems = [], aroundFetchedAt = 0, aroundFetchPos = null, aroundRenderAt = 0;
+let aroundLayer = null, coneLayer = null, viseTimer = null;
+function relAngle(b, h) { return ((b - h + 540) % 360) - 180; }
+function cardinal(b) { return ['vers le nord','vers le nord-est','vers l’est','vers le sud-est','vers le sud','vers le sud-ouest','vers l’ouest','vers le nord-ouest'][Math.round(b / 45) % 8]; }
+function destPoint(p, brg, d) {
+  const R = 6371000, r = Math.PI/180, la = p.lat*r, lo = p.lon*r, t = brg*r, dr = d/R;
+  const la2 = Math.asin(Math.sin(la)*Math.cos(dr) + Math.cos(la)*Math.sin(dr)*Math.cos(t));
+  const lo2 = lo + Math.atan2(Math.sin(t)*Math.sin(dr)*Math.cos(la), Math.cos(dr) - Math.sin(la)*Math.sin(la2));
+  return [la2/r, lo2/r];
+}
+function aroundPosition() {
+  return new Promise((res, rej) => {
+    if (lastPos) return res(lastPos);
+    if (!navigator.geolocation) return rej({ code: 2 });
+    navigator.geolocation.getCurrentPosition(p => { lastPos = { lat: p.coords.latitude, lon: p.coords.longitude }; res(lastPos); },
+      rej, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+  });
+}
+async function fetchAround(pos) {
+  const ctl = ('AbortController' in window) ? new AbortController() : null;
+  const tm = ctl ? setTimeout(() => ctl.abort(), 12000) : null;
+  let r;
+  try { r = await fetch(WAPI + 'action=query&list=geosearch&gsradius=500&gslimit=50&gscoord=' + pos.lat.toFixed(5) + '%7C' + pos.lon.toFixed(5), ctl ? { signal: ctl.signal } : {}); }
+  finally { if (tm) clearTimeout(tm); }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  aroundItems = ((j.query || {}).geosearch || []).map(g => ({ id: 'geo-' + g.pageid, title: g.title, lat: g.lat, lon: g.lon }));
+  aroundFetchedAt = Date.now(); aroundFetchPos = { lat: pos.lat, lon: pos.lon };
+}
+async function refreshAround(force) {
+  if (!aroundOpen) return;
+  const st = $('aroundStatus');
+  try {
+    const pos = await aroundPosition();
+    if (force || !aroundFetchPos || dist(aroundFetchPos, pos) > 80 || Date.now() - aroundFetchedAt > 180000) {
+      st.textContent = 'Recherche des lieux autour de vous…';
+      await fetchAround(pos);
+    }
+    renderAround();
+  } catch (e) {
+    st.textContent = e && e.code === 1
+      ? 'Localisation refusée : autorisez-la dans les réglages du navigateur pour utiliser « Autour de moi ».'
+      : (e && e.code === 3 ? 'Position GPS introuvable pour l’instant (délai dépassé). Appuyez sur Actualiser.' : 'Impossible de charger les lieux (connexion ou Wikipédia). Appuyez sur Actualiser.');
+  }
+}
+function setContextFromAround(it, text) {
+  const changed = !lastStop || lastStop.id !== it.id;
+  lastStop = { id: it.id, name: it.title, text: text || (lastStop && lastStop.id === it.id ? lastStop.text : ''), lat: it.lat, lon: it.lon };
+  if (changed) { $('qText').value = ''; }
+  updateAskLinks();
+}
+async function listenAround(it) {
+  const info = $('info'); info.hidden = false; info.textContent = 'Recherche sur Wikipédia : ' + it.title + '…';
+  try {
+    const res = await wikiExtract(it.title);
+    if (!res) { info.textContent = 'Pas de résumé Wikipédia disponible pour ' + it.title + '.'; setContextFromAround(it, ''); return; }
+    let text = cleanForSpeech(res.text);
+    if (text.length > 1800) text = text.slice(0, 1800).replace(/[^.]*$/, '');
+    setContextFromAround(it, text);
+    info.innerHTML = ''; const b = document.createElement('b'); b.textContent = res.title; info.appendChild(b);
+    info.appendChild(document.createTextNode(' · Wikipédia — '));
+    const a = document.createElement('a'); a.href = 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(res.title.replace(/ /g, '_'));
+    a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'ouvrir l’article'; info.appendChild(a);
+    current = { id: it.id, name: res.title, text, lat: it.lat, lon: it.lon };
+    $('now').textContent = res.title + ' (autour de moi)'; $('stopBtn').hidden = false;
+    speak(res.title + '. ' + text, () => { current = null; $('stopBtn').hidden = true; $('now').textContent = 'En route…'; renderList(); });
+  } catch (e) {
+    info.textContent = 'Wikipédia ne répond pas (connexion ?). Réessayez dans un instant.';
+  }
+}
+function drawAroundOnMap(list) {
+  if (!map) return;
+  if (!aroundLayer) aroundLayer = L.layerGroup().addTo(map);
+  aroundLayer.clearLayers();
+  list.forEach((x, i) => {
+    L.circleMarker([x.it.lat, x.it.lon], { renderer: window.routeRenderer, radius: (vise && i === 0) ? 9 : 6, color: '#fff', weight: 2,
+      fillColor: '#d9822b', fillOpacity: 1 }).bindPopup(x.it.title).addTo(aroundLayer);
+  });
+  if (coneLayer) { map.removeLayer(coneLayer); coneLayer = null; }
+  if (vise && viseHeading !== null && lastPos) {
+    const pts = [[lastPos.lat, lastPos.lon]];
+    for (let a = -VISE_HALF; a <= VISE_HALF; a += 5) pts.push(destPoint(lastPos, viseHeading + a, VISE_R));
+    coneLayer = L.polygon(pts, { renderer: window.routeRenderer, color: '#d9822b', weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
+  }
+}
+function renderAround() {
+  if (!aroundOpen) return;
+  aroundRenderAt = Date.now();
+  const st = $('aroundStatus'), ol = $('aroundList');
+  if (!lastPos) { st.textContent = 'En attente de votre position…'; return; }
+  const h = vise ? viseHeading : null;
+  let list = aroundItems.map(it => ({ it, d: dist(lastPos, it), b: bearingTo(lastPos, it) }));
+  if (h !== null) {
+    list = list.filter(x => x.d <= VISE_NEAR || (x.d <= VISE_R && Math.abs(relAngle(x.b, h)) <= VISE_HALF))
+               .map(x => ({ ...x, off: x.d <= VISE_NEAR ? 0 : Math.abs(relAngle(x.b, h)) }))
+               .sort((a, b) => (a.off - b.off) || (a.d - b.d));
+  } else {
+    list = list.filter(x => x.d <= AROUND_R).sort((a, b) => a.d - b.d);
+  }
+  list = list.slice(0, 12);
+  if (vise && h === null) st.textContent = 'Boussole en attente : bougez un peu le téléphone. En attendant, voici tout ce qui est autour de vous.';
+  else if (!list.length) st.textContent = h !== null ? 'Rien de répertorié dans cette direction jusqu’à ' + VISE_R + ' m. Tournez-vous un peu.' : 'Aucun lieu répertorié sur Wikipédia à moins de ' + AROUND_R + ' m.';
+  else st.textContent = h !== null ? 'Dans la direction visée (jusqu’à ' + VISE_R + ' m) : le plus dans l’axe en premier.' : list.length + (list.length > 1 ? ' lieux' : ' lieu') + ' à moins de ' + AROUND_R + ' m, du plus proche au plus loin.';
+  ol.innerHTML = '';
+  list.forEach((x, i) => {
+    const li = document.createElement('li');
+    li.className = 'stop-item' + (h !== null && i === 0 ? ' playing' : '');
+    const rot = h !== null ? relAngle(x.b, h) : x.b;
+    li.innerHTML = '<span class="arrow" aria-hidden="true">↑</span><div style="min-width:0"><div class="stop-name"></div><div class="stop-meta"></div></div><div class="around-btns"></div>';
+    li.querySelector('.arrow').style.transform = 'rotate(' + Math.round(rot) + 'deg)';
+    li.querySelector('.stop-name').textContent = x.it.title;
+    li.querySelector('.stop-meta').textContent = fmt(x.d) + (h !== null ? (x.d <= VISE_NEAR ? ' · tout près' : ' · ' + (Math.abs(relAngle(x.b, h)) < 8 ? 'droit devant' : relAngle(x.b, h) < 0 ? 'un peu à gauche' : 'un peu à droite')) : ' · ' + cardinal(x.b));
+    const bt = li.querySelector('.around-btns');
+    const b1 = document.createElement('button'); b1.textContent = 'Écouter'; b1.onclick = () => listenAround(x.it); bt.appendChild(b1);
+    const a = document.createElement('a'); a.className = 'gbtn'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Google IA';
+    a.href = 'https://www.google.com/search?udm=50&q=' + encodeURIComponent('Je visite Madrid à pied et je suis à environ ' + Math.round(x.d) + ' mètres de : ' + x.it.title + '. Qu’est-ce que c’est et qu’y a-t-il d’intéressant à savoir (histoire, architecture, anecdotes) ? Réponds en français, de façon précise et concise, en privilégiant les faits vérifiables.');
+    a.addEventListener('click', () => setContextFromAround(x.it, null));
+    bt.appendChild(a);
+    ol.appendChild(li);
+  });
+  drawAroundOnMap(list);
+}
+function onViseOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h === null) return;
+  const so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : 0;
+  const first = viseHeading === null;
+  viseHeading = (h + so) % 360;
+  if (first || Date.now() - aroundRenderAt > 300) renderAround();
+  else if (!viseTimer) viseTimer = setTimeout(() => { viseTimer = null; renderAround(); }, 320);   // dernière position toujours affichée
+}
+async function toggleVise() {
+  vise = !vise;
+  $('viseBtn').setAttribute('aria-pressed', String(vise));
+  $('viseBtn').textContent = vise ? 'Je vise : activé' : 'Je vise';
+  if (vise) {
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') { $('aroundStatus').textContent = 'Accès à la boussole refusé : le mode « Je vise » ne peut pas fonctionner.'; }
+      }
+    } catch (e) {}
+    window.addEventListener('deviceorientation', onViseOrient);
+    window.addEventListener('deviceorientationabsolute', onViseOrient);
+  } else {
+    window.removeEventListener('deviceorientation', onViseOrient);
+    window.removeEventListener('deviceorientationabsolute', onViseOrient);
+    viseHeading = null;
+  }
+  renderAround();
+}
+function setAround(open) {
+  aroundOpen = open;
+  $('aroundBox').hidden = !open;
+  $('aroundBtn').textContent = open ? 'Fermer Autour de moi' : 'Autour de moi';
+  if (open) { $('askBox').hidden = true; $('aroundStatus').textContent = 'Recherche de votre position…'; refreshAround(true); setTimeout(() => $('aroundBox').scrollIntoView({ block: 'start', behavior: 'smooth' }), 50); }
+  else {
+    if (vise) toggleVise();
+    if (aroundLayer) aroundLayer.clearLayers();
+    if (coneLayer && map) { map.removeLayer(coneLayer); coneLayer = null; }
+  }
+}
+$('aroundBtn').onclick = () => setAround($('aroundBox').hidden);
+$('aroundClose').onclick = () => setAround(false);
+$('aroundRefresh').onclick = () => refreshAround(true);
+$('viseBtn').onclick = toggleVise;
+
+renderList();
+</script>
+</body>
+</html>
